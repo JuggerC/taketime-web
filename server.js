@@ -1459,25 +1459,42 @@ function maybeBotAct(room) {
 // ---------------------------------------------------------------------------
 // State sanitization (privacy: face-down values never leak during play)
 // ---------------------------------------------------------------------------
-function sanitizeCard(c, isRevealed) {
-  if (isRevealed || c.face_up) {
+//   - 终局 (isRevealed): 所有人都看正脸
+//   - 翻牌 (c.face_up): 所有人都看正脸
+//   - 暗牌: 出牌人自己总是看正脸 (桌游规则: 你自己出的牌对自己是明的),
+//           其他玩家看不到数值
+function sanitizeCard(c, isRevealed, viewerIdx) {
+  if (isRevealed) {
     return { v: c.v, c: c.c, face_up: true, player: c.player };
   }
-  // 暗牌: 隐藏数值 (v) 但保留颜色 (c) 和出牌人 (player),
-  // 这样客户端可以按 Solar/Lunar 渲染不同牌背 (隐私仍在: 看不到值)
+  // 暗牌但出牌人自己看: 总是正面
+  if (viewerIdx != null && viewerIdx === c.player) {
+    return { v: c.v, c: c.c, face_up: true, player: c.player };
+  }
+  if (c.face_up) {
+    return { v: c.v, c: c.c, face_up: true, player: c.player };
+  }
+  // 暗牌 + 其他人看: 隐藏数值
   return { c: c.c, face_up: false, player: c.player };
 }
-function sanitizeSegment(seg, isRevealed) {
-  return seg.map(c => sanitizeCard(c, isRevealed));
+function sanitizeSegment(seg, isRevealed, viewerIdx) {
+  return seg.map(c => sanitizeCard(c, isRevealed, viewerIdx));
 }
-function sanitizeHistoryEntry(h, isRevealed) {
-  if (isRevealed || h.face_up) {
+function sanitizeHistoryEntry(h, isRevealed, viewerIdx) {
+  if (isRevealed) {
+    return { turn: h.turn, player: h.player, segment: h.segment, face_up: true, v: h.v, c: h.c };
+  }
+  // 出牌人自己的 history entry: 总是看正面
+  if (viewerIdx != null && viewerIdx === h.player) {
+    return { turn: h.turn, player: h.player, segment: h.segment, face_up: true, v: h.v, c: h.c };
+  }
+  if (h.face_up) {
     return { turn: h.turn, player: h.player, segment: h.segment, face_up: true, v: h.v, c: h.c };
   }
   return { turn: h.turn, player: h.player, segment: h.segment, face_up: false };
 }
 
-function getPublicState(room) {
+function getPublicState(room, viewerIdx) {
   const revealAll = room.state === 'finished';
   return {
     id: room.id,
@@ -1517,8 +1534,8 @@ function getPublicState(room) {
       is_bot: !!p.isBot,
       is_host: i === room.host_idx,
     })),
-    segments: revealAll ? room.segments : room.segments.map(s => sanitizeSegment(s, revealAll)),
-    history: revealAll ? room.history : room.history.map(h => sanitizeHistoryEntry(h, revealAll)),
+    segments: revealAll ? room.segments : room.segments.map(s => sanitizeSegment(s, revealAll, viewerIdx)),
+    history: revealAll ? room.history : room.history.map(h => sanitizeHistoryEntry(h, revealAll, viewerIdx)),
     face_up_remaining: room.face_up_remaining,
     first_player_idx: room.first_player_idx,
     current_player_idx: room.current_player_idx,
@@ -1577,9 +1594,16 @@ function getPlayerView(room, playerIdx) {
       const l = p.hand.filter(c => c.c === 2).length;
       return [s, l];
     }),
-    segment_face_up_cards: room.segments.map(s => s.filter(c => c.face_up).map(c => ({ v: c.v, c: c.c }))),
-    segment_face_up_counts: room.segments.map(s => s.filter(c => c.face_up).length),
-    segment_face_down_counts: room.segments.map(s => s.filter(c => !c.face_up).length),
+    segment_face_up_cards: room.segments.map(s =>
+      // 翻牌的 + 出牌人自己出的未翻牌 (对自己明)
+      s.filter(c => c.face_up || c.player === playerIdx).map(c => ({ v: c.v, c: c.c }))
+    ),
+    segment_face_up_counts: room.segments.map(s =>
+      s.filter(c => c.face_up || c.player === playerIdx).length
+    ),
+    segment_face_down_counts: room.segments.map(s =>
+      s.filter(c => !c.face_up && c.player !== playerIdx).length
+    ),
     segment_total_counts: room.segments.map(s => s.length),
     face_up_remaining: room.face_up_remaining,
     turn_number: room.turn_number,
@@ -1596,7 +1620,7 @@ function broadcastRoom(room) {
     if (p.socketId) {
       io.to(p.socketId).emit('state_update', {
         view: getPlayerView(room, i),
-        public: getPublicState(room),
+        public: getPublicState(room, i),  // viewerIdx 让出牌人自己看到自己出的牌正脸
       });
     }
   }
