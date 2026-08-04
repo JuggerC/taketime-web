@@ -25,3 +25,6 @@ HANDOFF.md
 # Build artifacts (none currently, but for future)
 dist/
 build/
+
+# Account / attempt data (Phase 1+ 私房 + 小队记录功能生成的本地数据, 不上 GitHub)
+data/

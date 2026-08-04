@@ -239,7 +239,7 @@ async function scenario(name, fn) {
     }
     const closestRule = detail.find(d => /^I\s*的点数和最接近\s*6/.test(d.name));
     const colorRule = detail.find(d => /^IV\s*恰好\s*1\s*太阳\s*\+\s*1\s*月亮/.test(d.name));
-    const maxValRule = detail.find(d => /每段和\s*≤\s*24/.test(d.name));
+    const maxValRule = detail.find(d => /每段.+和\s*≤\s*24/.test(d.name));
     if (!closestRule) throw new Error('Expected I closest-to-9 rule in detail');
     if (!colorRule) throw new Error('Expected IV color-combo (1S+1L) rule in detail');
     if (!maxValRule) throw new Error('Expected ≤24 rule in detail');

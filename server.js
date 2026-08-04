@@ -27,9 +27,17 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3001;  // v4 uses 3001 to avoid v3's :3000
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
+const ATTEMPTS_FILE = path.join(DATA_DIR, 'attempts.json');
+
 const app = express();
 const server = http.createServer(app);
 // Socket.IO production 配置:
@@ -1316,6 +1324,45 @@ function checkGameEnd(room) {
     room.state = 'finished';
     const result = checkResolution(room);
     room.game_result = { won: result.won, detail: result.detail, sums: result.sums };
+    // Phase 3: 写入小队尝试记录
+    recordAttempt(room);
+  }
+}
+
+// Phase 3: 小队尝试记录
+// 记录每次真实游戏结束 (出完所有手牌) → attempts.json
+// "all humans left → 强制结束" 走 leave_room 里的 checkGameEnd 但带 reason, 那里不调用 recordAttempt
+function recordAttempt(room) {
+  try {
+    // 只记至少有一个真人登录的尝试 (匿名玩家无 userId 不参与归集, 但允许匿名)
+    // squad 只记登录玩家的 userId (排序后作为 canonical key)
+    const squad = room.players
+      .filter(p => p.userId)  // 只算登录玩家
+      .map(p => p.userId)
+      .sort();
+    const squad_nicknames = room.players
+      .filter(p => p.userId)
+      .map(p => p.nickname);
+    const attempt = {
+      id: 'att_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+      started_at: room.started_at || Date.now(),
+      ended_at: Date.now(),
+      chapter_id: room.chapter.id,
+      chapter_name: room.chapter.name,
+      clock_id: room.clock.id,
+      clock_name: room.clock.name,
+      squad,                              // canonical key
+      squad_nicknames,                    // 当时快照 (防止改名后失真)
+      result: room.game_result && room.game_result.won ? 'won' : 'lost',
+      turn_count: room.turn_number || 0,
+      duration_seconds: Math.floor(((Date.now() - (room.started_at || Date.now())) / 1000)),
+      player_count: room.players.length,
+    };
+    attempts.attempts.push(attempt);
+    saveAttempts();
+    console.log(`[history] recorded attempt ${attempt.id} (${attempt.result}, squad=${squad.length} players)`);
+  } catch (err) {
+    console.error('[history] recordAttempt failed:', err.message);
   }
 }
 
@@ -1533,6 +1580,7 @@ function getPublicState(room, viewerIdx) {
       is_first: i === room.first_player_idx,
       is_bot: !!p.isBot,
       is_host: i === room.host_idx,
+      userId: p.userId || null,  // 登录用户带 userId, 匿名 null (小队归集用)
     })),
     segments: revealAll ? room.segments : room.segments.map(s => sanitizeSegment(s, revealAll, viewerIdx)),
     history: revealAll ? room.history : room.history.map(h => sanitizeHistoryEntry(h, revealAll, viewerIdx)),
@@ -1628,7 +1676,7 @@ function broadcastRoom(room) {
 
 function broadcastRoomList() {
   const list = [...rooms.values()]
-    .filter(r => r.state === 'lobby')
+    .filter(r => r.state === 'lobby' && !r.is_private)  // 私人房不出现在列表
     .map(getRoomListItem);
   io.emit('room_list', list);
 }
@@ -1646,7 +1694,7 @@ function genRoomId() {
   return id;
 }
 
-function createRoom(chapterId, clockId, maxPlayers) {
+function createRoom(chapterId, clockId, maxPlayers, password) {
   const id = genRoomId();
   const chapter = getChapter(chapterId);
   const clock = chapter.clocks.find(c => c.id === clockId) || chapter.clocks[0];
@@ -1655,6 +1703,8 @@ function createRoom(chapterId, clockId, maxPlayers) {
     state: 'lobby',
     chapter,
     clock,
+    is_private: !!password,
+    password: password || null,
     max_players: Math.max(2, Math.min(4, maxPlayers || 4)),
     players: [],
     segments: Array.from({ length: chapter.n_segments }, () => []),
@@ -1699,9 +1749,110 @@ function pickColor(requested, takenColors) {
   }
   return { error: '所有颜色已被占用' };
 }
+// ---------------------------------------------------------------------------
+// Account system: passphrase-based register/login (no username, no email).
+//
+// Storage:
+//   data/users.json   { users: [{ userId, passphrase_hash, salt, display_name, created_at }] }
+//   data/tokens.json  { tokens: [{ token, userId, created_at }] }
+//
+// Flow:
+//   1. Client opens socket with `auth: { token }` if it has one from localStorage.
+//   2. io.use middleware below looks up the token; on hit, attaches
+//      `socket.data.userId` and `socket.data.displayName`.
+//   3. Player objects gain `userId: string | null`. null for anonymous play.
+//   4. Anonymous still works — no token means no userId, no displayName.
+// ---------------------------------------------------------------------------
+
+function loadJsonFile(file, fallback) {
+  try {
+    if (!fs.existsSync(file)) return fallback;
+    const raw = fs.readFileSync(file, 'utf8');
+    if (!raw.trim()) return fallback;
+    return JSON.parse(raw);
+  } catch (err) {
+    // 损坏的 JSON: 备份一份, 从空开始 (数据不会丢, 只是历史从此刻起)
+    try {
+      if (fs.existsSync(file)) fs.renameSync(file, file + '.bak.' + Date.now());
+    } catch (_) {}
+    console.error(`[load] ${file} 损坏: ${err.message}, 从空数据启动`);
+    return fallback;
+  }
+}
+function saveJsonFile(file, obj) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+let users = loadJsonFile(USERS_FILE, { users: [] });
+let tokens = loadJsonFile(TOKENS_FILE, { tokens: [] });
+let attempts = loadJsonFile(ATTEMPTS_FILE, { attempts: [] });
+
+function saveUsers() { saveJsonFile(USERS_FILE, users); }
+function saveTokens() { saveJsonFile(TOKENS_FILE, tokens); }
+function saveAttempts() { saveJsonFile(ATTEMPTS_FILE, attempts); }
+
+function hashPassphrase(passphrase, salt) {
+  return crypto.createHash('sha256').update(salt + passphrase, 'utf8').digest('hex');
+}
+function genSalt() {
+  return crypto.randomBytes(8).toString('hex');  // 16 chars
+}
+function genToken() {
+  return crypto.randomBytes(24).toString('hex');  // 48 chars
+}
+function genUserId() {
+  return crypto.randomUUID();
+}
+
+function findUserByPassphrase(passphrase) {
+  // 注意: 没法快速反查, 只能 O(N) 遍历. 玩家量 < 1000 完全 OK.
+  for (const u of users.users) {
+    if (hashPassphrase(passphrase, u.salt) === u.passphrase_hash) return u;
+  }
+  return null;
+}
+function findUserById(userId) {
+  return users.users.find(u => u.userId === userId) || null;
+}
+function findToken(tokenStr) {
+  return tokens.tokens.find(t => t.token === tokenStr) || null;
+}
+function issueToken(userId) {
+  const t = { token: genToken(), userId, created_at: Date.now() };
+  tokens.tokens.push(t);
+  saveTokens();
+  return t.token;
+}
+function revokeToken(tokenStr) {
+  const i = tokens.tokens.findIndex(t => t.token === tokenStr);
+  if (i >= 0) {
+    tokens.tokens.splice(i, 1);
+    saveTokens();
+    return true;
+  }
+  return false;
+}
+
+// io.use middleware: 用 token 找 user, 挂到 socket.data.
+// 匿名也放行 (无 token / token 失效), 只是没有 userId.
+io.use((socket, next) => {
+  const tokenStr = socket.handshake.auth?.token;
+  if (!tokenStr || typeof tokenStr !== 'string') return next();
+  const t = findToken(tokenStr);
+  if (!t) return next();
+  const u = findUserById(t.userId);
+  if (!u) return next();
+  socket.data.userId = u.userId;
+  socket.data.displayName = u.display_name;
+  socket.data.token = tokenStr;
+  next();
+});
+
 io.on('connection', (socket) => {
   console.log(`[+] ${socket.id}`);
-  socket.emit('room_list', [...rooms.values()].filter(r => r.state === 'lobby').map(getRoomListItem));
+  socket.emit('room_list', [...rooms.values()].filter(r => r.state === 'lobby' && !r.is_private).map(getRoomListItem));
   // Send chapter + clock catalog to client for the lobby picker
   socket.emit('chapters', Object.values(CHAPTERS).map(ch => ({
     id: ch.id, name: ch.name, subtitle: ch.subtitle, description: ch.description,
@@ -1712,47 +1863,232 @@ io.on('connection', (socket) => {
     clocks: ch.clocks.map(c => ({ id: c.id, name: c.name, subtitle: c.subtitle, image: c.image, rulesheet: c.rulesheet || ch.rulesheet, validators: c.validators || [], forced_play: c.forced_play || null, clock_hand_segment: c.clock_hand_segment || null, forbidden_segments: c.forbidden_segments || [] })),
   })));
   socket.emit('player_colors', PLAYER_COLORS);
+  // Account info: 已登录的话告诉客户端
+  if (socket.data.userId) {
+    socket.emit('account_info', {
+      logged_in: true,
+      userId: socket.data.userId,
+      display_name: socket.data.displayName,
+    });
+  } else {
+    socket.emit('account_info', { logged_in: false });
+  }
 
-  socket.on('create_room', ({ nickname, chapter_id, clock_id, max_players, color }, ack) => {
+  // ---------------- 账号系统 (passphrase) ----------------
+
+  socket.on('register_passphrase', ({ passphrase, display_name }, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
+    if (typeof passphrase !== 'string' || passphrase.length < 6) {
+      return ack({ error: '暗号至少 6 个字符' });
+    }
+    if (passphrase.length > 64) {
+      return ack({ error: '暗号最多 64 个字符' });
+    }
+    if (typeof display_name !== 'string' || !display_name.trim()) {
+      return ack({ error: '请输入显示名' });
+    }
+    const dn = display_name.trim().slice(0, 20);
+    // 不强制 display_name 唯一 (用户场景: 朋友起名随意)
+    const user = {
+      userId: genUserId(),
+      passphrase_hash: hashPassphrase(passphrase, genSalt()),
+      salt: undefined,  // 占位, 下面会重新生成
+      display_name: dn,
+      created_at: Date.now(),
+    };
+    user.salt = genSalt();
+    user.passphrase_hash = hashPassphrase(passphrase, user.salt);
+    users.users.push(user);
+    saveUsers();
+    const token = issueToken(user.userId);
+    // 当前 socket 也直接登入 (避免需要刷一次)
+    socket.data.userId = user.userId;
+    socket.data.displayName = user.display_name;
+    socket.data.token = token;
+    socket.emit('account_info', { logged_in: true, userId: user.userId, display_name: user.display_name });
+    console.log(`[auth] registered userId=${user.userId} display="${user.display_name}"`);
+    ack({ ok: true, userId: user.userId, display_name: user.display_name, token });
+  });
+
+  socket.on('login_passphrase', ({ passphrase }, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
+    if (typeof passphrase !== 'string' || passphrase.length < 6) {
+      return ack({ error: '暗号至少 6 个字符' });
+    }
+    const u = findUserByPassphrase(passphrase);
+    if (!u) return ack({ error: '暗号不正确' });
+    // 给这次连接发新 token
+    const token = issueToken(u.userId);
+    // 当前 socket 也直接登入
+    socket.data.userId = u.userId;
+    socket.data.displayName = u.display_name;
+    socket.data.token = token;
+    socket.emit('account_info', { logged_in: true, userId: u.userId, display_name: u.display_name });
+    console.log(`[auth] login userId=${u.userId} display="${u.display_name}"`);
+    ack({ ok: true, userId: u.userId, display_name: u.display_name, token });
+  });
+
+  socket.on('get_my_info', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
+    if (socket.data.userId) {
+      ack({ logged_in: true, userId: socket.data.userId, display_name: socket.data.displayName });
+    } else {
+      ack({ logged_in: false });
+    }
+  });
+
+  socket.on('logout', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
+    if (socket.data.token) {
+      revokeToken(socket.data.token);
+      delete socket.data.userId;
+      delete socket.data.displayName;
+      delete socket.data.token;
+    }
+    socket.emit('account_info', { logged_in: false });
+    ack({ ok: true });
+  });
+
+  // Phase 3: 获取我的历史
+  socket.on('get_my_history', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
+    if (!socket.data.userId) return ack({ error: '请先登录' });
+    const myId = socket.data.userId;
+    // 我参与过的 attempt
+    const mine = attempts.attempts.filter(a => a.squad.includes(myId));
+    // 按时间倒序
+    mine.sort((a, b) => b.ended_at - a.ended_at);
+    // 统计
+    const total = mine.length;
+    const wins = mine.filter(a => a.result === 'won').length;
+    const losses = total - wins;
+    // 当前连胜 (从最新往回数, 第一次断连胜的 attempt 处停下)
+    let streak = 0;
+    let lastResult = null;
+    for (const a of mine) {
+      if (lastResult === null) { lastResult = a.result; streak = (a.result === 'won' ? 1 : -1); }
+      else if (a.result === lastResult) { streak += (a.result === 'won' ? 1 : -1); }
+      else break;
+    }
+    // 按小队聚合
+    const squadMap = new Map();
+    for (const a of mine) {
+      const key = a.squad.join('|');
+      if (!squadMap.has(key)) {
+        squadMap.set(key, {
+          squad: a.squad,
+          squad_nicknames: a.squad_nicknames,
+          attempts: [],
+        });
+      }
+      squadMap.get(key).attempts.push(a);
+    }
+    // 每个小队内部按时间倒序
+    const squads = [...squadMap.values()].map(s => {
+      s.attempts.sort((a, b) => b.ended_at - a.ended_at);
+      const w = s.attempts.filter(x => x.result === 'won').length;
+      return {
+        ...s,
+        total: s.attempts.length,
+        wins: w,
+        losses: s.attempts.length - w,
+      };
+    });
+    // 按"最近一起玩"时间排序
+    squads.sort((a, b) => b.attempts[0].ended_at - a.attempts[0].ended_at);
+    // 按章节聚合
+    const byChapter = {};
+    for (const a of mine) {
+      if (!byChapter[a.chapter_id]) byChapter[a.chapter_id] = { chapter_name: a.chapter_name, wins: 0, losses: 0 };
+      if (a.result === 'won') byChapter[a.chapter_id].wins++;
+      else byChapter[a.chapter_id].losses++;
+    }
+    ack({
+      ok: true,
+      attempts: mine,
+      stats: {
+        total, wins, losses,
+        win_rate: total > 0 ? wins / total : null,
+        streak,
+        by_chapter: byChapter,
+      },
+      squads,
+    });
+  });
+
+  socket.on('create_room', ({ nickname, chapter_id, clock_id, max_players, color, password }, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
     if (!nickname || !nickname.trim()) return ack({ error: '请输入昵称' });
-    const room = createRoom(chapter_id || DEFAULT_CHAPTER, clock_id, max_players);
+    // 私人房密码校验 (空字符串/null 视为无密码, 即公开房)
+    if (password != null && password !== '') {
+      if (typeof password !== 'string') return ack({ error: '密码格式错误' });
+      if (password.length < 4 || password.length > 12) return ack({ error: '密码需 4-12 字符' });
+    }
+    const effectivePassword = (typeof password === 'string' && password.length > 0) ? password : null;
+    const room = createRoom(chapter_id || DEFAULT_CHAPTER, clock_id, max_players, effectivePassword);
     const takenColors = new Set();
     const chosen = pickColor(color, takenColors);
     if (chosen.error) return ack({ error: chosen.error });
-    room.players.push({ socketId: socket.id, nickname: nickname.trim(), hand: [], connected: true, color: chosen.color });
+    room.players.push({
+      socketId: socket.id,
+      userId: socket.data.userId || null,  // ← 登录用户带 userId, 匿名 null
+      nickname: nickname.trim(),
+      hand: [],
+      connected: true,
+      color: chosen.color,
+    });
     socket.join(room.id);
     if (room.host_idx == null) room.host_idx = 0;  // 第一个进房的玩家是房主
-    console.log(`[room ${room.id}] created by ${nickname} (color=${chosen.color}, chapter=${room.chapter.id}, clock=${room.clock.id}, max=${room.max_players})`);
-    ack({ room_id: room.id, player_idx: 0, color: chosen.color, chapter: room.chapter.id, clock: room.clock.id });
+    console.log(`[room ${room.id}] created by ${nickname} (color=${chosen.color}, chapter=${room.chapter.id}, clock=${room.clock.id}, max=${room.max_players}, userId=${socket.data.userId || 'anon'})`);
+    ack({ room_id: room.id, player_idx: 0, color: chosen.color, chapter: room.chapter.id, clock: room.clock.id, userId: socket.data.userId || null });
     broadcastRoom(room);
     broadcastRoomList();
   });
 
-  socket.on('join_room', ({ room_id, nickname, color }, ack) => {
+  socket.on('join_room', ({ room_id, nickname, color, password }, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
     if (!nickname || !nickname.trim()) return ack({ error: '请输入昵称' });
     const room = rooms.get(room_id);
     if (!room) return ack({ error: '房间不存在' });
     if (room.state !== 'lobby') return ack({ error: '游戏已开始' });
+    if (room.is_private && room.password !== (password || '')) {
+      return ack({ error: '密码错误' });
+    }
     if (room.players.length >= room.max_players) return ack({ error: `房间已满（最多 ${room.max_players} 人）` });
     const takenColors = new Set(room.players.map(p => p.color).filter(Boolean));
     const chosen = pickColor(color, takenColors);
     if (chosen.error) return ack({ error: chosen.error });
-    room.players.push({ socketId: socket.id, nickname: nickname.trim(), hand: [], connected: true, color: chosen.color });
+    room.players.push({
+      socketId: socket.id,
+      userId: socket.data.userId || null,
+      nickname: nickname.trim(),
+      hand: [],
+      connected: true,
+      color: chosen.color,
+    });
     socket.join(room.id);
     const idx = room.players.length - 1;
-    console.log(`[room ${room.id}] ${nickname} joined as P${idx} (color=${chosen.color})`);
-    ack({ room_id: room.id, player_idx: idx, color: chosen.color });
+    console.log(`[room ${room.id}] ${nickname} joined as P${idx} (color=${chosen.color}, userId=${socket.data.userId || 'anon'})`);
+    ack({ room_id: room.id, player_idx: idx, color: chosen.color, userId: socket.data.userId || null });
     broadcastRoom(room);
     broadcastRoomList();
   });
 
-  socket.on('rejoin_room', ({ room_id, nickname }, ack) => {
+  socket.on('rejoin_room', ({ room_id, nickname, password }, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
     const room = rooms.get(room_id);
     if (!room) return ack({ error: '房间不存在' });
-    const player = room.players.find(p => p.nickname === nickname);
+    if (room.is_private && room.password !== (password || '')) {
+      return ack({ error: '密码错误' });
+    }
+    // 优先按 userId 匹配 (登录玩家), 找不到回退到 nickname 匹配 (匿名玩家)
+    let player = null;
+    if (socket.data.userId) {
+      player = room.players.find(p => p.userId === socket.data.userId);
+      if (!player) player = room.players.find(p => p.nickname === nickname);
+    } else {
+      player = room.players.find(p => p.nickname === nickname);
+    }
     if (!player) return ack({ error: '该房间找不到此昵称' });
     if (player.isBot) return ack({ error: '此位置是 AI 机器人' });
     player.socketId = socket.id;
@@ -1760,7 +2096,7 @@ io.on('connection', (socket) => {
     if (room.state === 'rules_intro') player.ready = false;
     socket.join(room.id);
     const idx = room.players.indexOf(player);
-    console.log(`[room ${room.id}] ${nickname} rejoined as P${idx}`);
+    console.log(`[room ${room.id}] ${nickname} rejoined as P${idx} (userId=${socket.data.userId || 'anon'})`);
     ack({ room_id: room.id, player_idx: idx, reconnected: true });
     broadcastRoom(room);
   });

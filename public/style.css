@@ -153,6 +153,185 @@ body::before {
   margin-bottom: 4px;
   filter: drop-shadow(0 0 12px rgba(212, 175, 55, 0.3));
 }
+.lobby-header-right {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+}
+.small-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* ---------- 账号面板 ---------- */
+.auth-panel-wrap {
+  max-width: 1100px;
+  margin: 0 auto 16px;
+  padding: 0;
+}
+.auth-panel {
+  max-width: 480px;
+  margin: 0 auto;
+}
+.auth-panel h3 {
+  margin-top: 0;
+}
+.auth-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.auth-tab:hover { color: var(--text); background: transparent; transform: none; }
+.auth-tab.active {
+  color: var(--gold-bright);
+  border-bottom-color: var(--gold);
+}
+.auth-panel input[type="text"],
+.auth-panel input[type="password"] {
+  margin-bottom: 8px;
+}
+.auth-current {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+.auth-name {
+  font-size: 18px;
+  color: var(--gold-bright);
+  font-weight: bold;
+}
+
+/* ---------- 大厅: 房间号加入 + 私人房 ---------- */
+.lobby-join-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.lobby-join-row input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.lobby-join-row input[id="lobby-join-password"] {
+  flex: 1 1 120px;
+}
+.lobby-join-row button {
+  flex: 0 0 auto;
+}
+.lobby-create input[type="password"]:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- 历史战绩 (Phase 3) ---------- */
+.history-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  max-width: 1100px;
+  margin: 0 auto 16px;
+}
+@media (max-width: 700px) { .history-stats { grid-template-columns: repeat(2, 1fr); } }
+.stat-card {
+  background: var(--bg-mid);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 12px;
+  text-align: center;
+}
+.stat-card-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 6px;
+  font-family: var(--font-en);
+}
+.stat-card-val {
+  color: var(--gold-bright);
+  font-size: 28px;
+  font-weight: bold;
+  font-family: var(--font-en);
+}
+.history-list {
+  max-width: 1100px;
+  margin: 0 auto 16px;
+}
+.history-list h2 {
+  margin-bottom: 12px;
+}
+.squad-block {
+  background: var(--bg-mid);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+.squad-block h3 {
+  color: var(--gold);
+  font-family: var(--font-en);
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.squad-block h3 .muted {
+  font-weight: normal;
+  font-size: 12px;
+  margin-left: 8px;
+}
+.attempt-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.attempt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 4px;
+  font-size: 14px;
+}
+.attempt-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 36px;
+  text-align: center;
+}
+.attempt-badge.won { background: var(--gold); color: #1a1500; }
+.attempt-badge.lost { background: #4a4055; color: var(--text-muted); }
+.attempt-row .chapter { color: var(--text); }
+.attempt-row .time { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+.history-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* 终局"已记录"提示 */
+.end-saved {
+  text-align: center;
+  padding-top: 4px;
+  font-size: 12px;
+}
 
 .panel {
   background: linear-gradient(180deg, rgba(31, 39, 80, 0.7), rgba(22, 27, 61, 0.7));
@@ -236,6 +415,22 @@ input[type="text"] {
   transition: border-color 0.15s;
 }
 input[type="text"]:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.3);
+}
+input[type="password"] {
+  width: 100%;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: var(--font-zh);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="password"]:focus {
   border-color: var(--gold);
   box-shadow: 0 0 8px rgba(212, 175, 55, 0.3);
 }

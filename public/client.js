@@ -18,7 +18,22 @@ const SERVER_URL = (() => {
   if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:3001';
   return '';  // 同源
 })();
-const socket = io(SERVER_URL || '/', { reconnection: true, reconnectionAttempts: Infinity });
+// 本地存储的登录 token (Phase 1: 账号系统)
+const TT_TOKEN_KEY = 'tt_token';
+function getStoredToken() {
+  try { return localStorage.getItem(TT_TOKEN_KEY) || null; } catch (_) { return null; }
+}
+function setStoredToken(t) {
+  try {
+    if (t) localStorage.setItem(TT_TOKEN_KEY, t);
+    else localStorage.removeItem(TT_TOKEN_KEY);
+  } catch (_) {}
+}
+const socket = io(SERVER_URL || '/', {
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  auth: { token: getStoredToken() },  // 连接时带 token, 服务端 middleware 验证
+});
 
 // ---------- 常量 ----------
 
@@ -68,9 +83,18 @@ const state = {
   selectedCard: null,
   roomList: [],
   playerColors: PLAYER_COLORS,  // from server
+  // Phase 1: 账号
+  account: { logged_in: false, userId: null, display_name: null },
+  // Phase 2: 私人房
+  isPrivate: false,
+  roomPassword: '',
+  joinRoomId: '',
+  joinRoomPassword: '',
+  showAuthPanel: false,
+  authMode: 'login',  // 'login' | 'register'
 };
 
-const VIEWS = ['lobby', 'waiting', 'rules', 'ready', 'game', 'end'];
+const VIEWS = ['lobby', 'waiting', 'rules', 'ready', 'game', 'end', 'history'];
 function showView(name) {
   for (const v of VIEWS) {
     const el = document.getElementById(v + '-view');
@@ -206,6 +230,37 @@ function cardBackMiniHTML(solar) {
 // ---------- 大厅 ----------
 
 function renderLobby() {
+  // 账户按钮 + 我的战绩按钮
+  const accountBtn = document.getElementById('lobby-account-btn');
+  if (accountBtn) {
+    accountBtn.textContent = state.account.logged_in
+      ? `账户 · ${state.account.display_name || '已登录'}`
+      : '账户';
+    accountBtn.onclick = () => {
+      state.showAuthPanel = !state.showAuthPanel;
+      const wrap = document.getElementById('auth-panel-wrap');
+      if (wrap) wrap.style.display = state.showAuthPanel ? '' : 'none';
+      if (state.showAuthPanel) renderAuthPanel();
+    };
+  }
+  const historyBtn = document.getElementById('lobby-history-btn');
+  if (historyBtn) {
+    historyBtn.style.display = state.account.logged_in ? '' : 'none';
+    historyBtn.onclick = () => {
+      if (state.account.logged_in) {
+        showHistoryView();
+      } else {
+        toast('提示', '登录后才能查看战绩', '');
+      }
+    };
+  }
+  // Auth 面板展开状态
+  const authWrap = document.getElementById('auth-panel-wrap');
+  if (authWrap) {
+    authWrap.style.display = state.showAuthPanel ? '' : 'none';
+    if (state.showAuthPanel) renderAuthPanel();
+  }
+
   const picker = document.getElementById('chapter-picker');
   picker.innerHTML = '';
   if (state.chapters.length === 0) {
@@ -292,18 +347,67 @@ function renderLobby() {
       list.appendChild(li);
     }
   }
+  // 私人房 checkbox 联动密码框
+  const privBox = document.getElementById('lobby-private');
+  const pwInput = document.getElementById('lobby-password');
+  if (privBox && pwInput) {
+    privBox.checked = state.isPrivate;
+    pwInput.disabled = !state.isPrivate;
+    if (state.isPrivate) pwInput.value = state.roomPassword;
+    privBox.onchange = () => {
+      state.isPrivate = privBox.checked;
+      pwInput.disabled = !state.isPrivate;
+      if (state.isPrivate) pwInput.focus();
+    };
+    pwInput.oninput = () => { state.roomPassword = pwInput.value; };
+  }
+
+  // 手动加入房间 (输入房间号)
+  const joinIdInput = document.getElementById('lobby-join-id');
+  const joinPwInput = document.getElementById('lobby-join-password');
+  const joinBtn = document.getElementById('lobby-join-btn');
+  if (joinIdInput) joinIdInput.value = state.joinRoomId;
+  if (joinPwInput) joinPwInput.value = state.joinRoomPassword;
+  if (joinBtn) {
+    joinBtn.onclick = async () => {
+      const rid = joinIdInput.value.trim().toUpperCase();
+      const pw = joinPwInput.value;
+      if (!rid) return toast('请输入房间号', '', 'error');
+      const nick = document.getElementById('lobby-nickname').value.trim();
+      if (!nick) return toast('请输入昵称', '', 'error');
+      const r = await emit('join_room', {
+        room_id: rid, nickname: nick, color: state.myColor, password: pw || undefined,
+      });
+      if (r?.error) return toast('加入失败', r.error, 'error');
+      state.joinRoomId = rid;
+      state.joinRoomPassword = pw;
+      state.nickname = nick;
+      state.roomId = r.room_id;
+      state.playerIdx = r.player_idx;
+      state.myColor = r.color;
+      showView('waiting');
+      renderWaiting();
+    };
+  }
+
   // 创建按钮
   document.getElementById('lobby-create-btn').onclick = async () => {
     const nick = document.getElementById('lobby-nickname').value.trim();
     if (!nick) return toast('请输入昵称', '', 'error');
     if (!state.selectedChapterId || !state.selectedClockId) return toast('请先选章与局', '', 'error');
-    const r = await emit('create_room', {
+    const payload = {
       nickname: nick,
       chapter_id: state.selectedChapterId,
       clock_id: state.selectedClockId,
       max_players: state.maxPlayers,
       color: state.myColor,
-    });
+    };
+    if (state.isPrivate) {
+      const pw = (state.roomPassword || '').trim();
+      if (pw.length < 4 || pw.length > 12) return toast('私人房密码需 4-12 字符', '', 'error');
+      payload.password = pw;
+    }
+    const r = await emit('create_room', payload);
     if (r?.error) return toast('创建失败', r.error, 'error');
     state.nickname = nick;
     state.roomId = r.room_id;
@@ -796,6 +900,7 @@ function renderEnd() {
   banner.innerHTML = won
     ? '<div class="end-effect end-effect-win"><div class="end-particles"></div></div><h2 class="end-h2">✨ 时序归位</h2><p>所有规则都满足。钟面成象，万物归位。</p>'
     : '<div class="end-effect end-effect-lose"><div class="end-shards"></div></div><h2 class="end-h2">⟁ 时序失序</h2><p>有规则未满足。讨论后再次启钟。</p>';
+  maybeShowEndSaved();
 
   document.getElementById('end-clock-img').src = state.public.clock.image;
   // Ch08 终局: 视觉旋转对齐最后状态. CSS 已用 translate 居中, JS 必须保留.
@@ -968,6 +1073,36 @@ if (_rulesLeave) _rulesLeave.onclick = () => {
 
 socket.on('connect', () => console.log('connected', socket.id));
 socket.on('disconnect', () => toast('已断开', '正在尝试重连…', 'error'));
+
+// Phase 1: 账号系统
+socket.on('account_info', (info) => {
+  if (info && info.logged_in) {
+    state.account = { logged_in: true, userId: info.userId, display_name: info.display_name };
+  } else {
+    state.account = { logged_in: false, userId: null, display_name: null };
+  }
+  renderLobby();
+});
+async function registerPassphrase(passphrase, displayName) {
+  const r = await emit('register_passphrase', { passphrase, display_name: displayName });
+  if (r?.error) return { error: r.error };
+  setStoredToken(r.token);
+  state.account = { logged_in: true, userId: r.userId, display_name: r.display_name };
+  return { ok: true, display_name: r.display_name };
+}
+async function loginPassphrase(passphrase) {
+  const r = await emit('login_passphrase', { passphrase });
+  if (r?.error) return { error: r.error };
+  setStoredToken(r.token);
+  state.account = { logged_in: true, userId: r.userId, display_name: r.display_name };
+  return { ok: true, display_name: r.display_name };
+}
+async function logoutAccount() {
+  try { await emit('logout'); } catch (_) {}
+  setStoredToken(null);
+  state.account = { logged_in: false, userId: null, display_name: null };
+  renderLobby();
+}
 socket.on('left_room', (data) => {
   // 服务器主动通知: 房间已清理, 客户端刷新回 lobby
   const reason = data?.reason || 'leave';
@@ -1011,3 +1146,156 @@ socket.on('state_update', (msg) => {
 
 showView('lobby');
 renderLobby();
+
+// ---------- 历史战绩 (Phase 3) ----------
+
+async function showHistoryView() {
+  if (!state.account.logged_in) {
+    toast('请先登录', '登录后才能查看战绩', 'warn');
+    return;
+  }
+  showView('history');
+  document.getElementById('history-player-nick').textContent = state.account.display_name || '—';
+  // 显示加载占位
+  document.getElementById('history-squads').innerHTML = '<p class="muted">加载中…</p>';
+  const r = await emit('get_my_history');
+  if (r?.error) {
+    document.getElementById('history-squads').innerHTML = `<p class="history-empty">${escapeHtml(r.error)}</p>`;
+    return;
+  }
+  state.myHistory = r.attempts || [];
+  state.myHistoryStats = r.stats || {};
+  state.myHistorySquads = r.squads || [];
+  renderHistoryView();
+}
+function renderHistoryView() {
+  const stats = state.myHistoryStats || {};
+  const total = stats.total || 0;
+  const wins = stats.wins || 0;
+  const losses = stats.losses || 0;
+  const rate = stats.win_rate;
+  const streak = stats.streak;
+  document.getElementById('hist-total').textContent = total;
+  document.getElementById('hist-wl').textContent = `${wins} / ${losses}`;
+  document.getElementById('hist-rate').textContent = rate == null ? '—' : (Math.round(rate * 100) + '%');
+  document.getElementById('hist-streak').textContent = streak == null || streak === 0
+    ? '—'
+    : (streak > 0 ? `胜 ${streak}` : `负 ${-streak}`);
+
+  const wrap = document.getElementById('history-squads');
+  if (total === 0) {
+    wrap.innerHTML = '<p class="history-empty">还没有尝试记录。登录一局游戏就会出现在这里。</p>';
+    return;
+  }
+  const squads = state.myHistorySquads || [];
+  wrap.innerHTML = squads.map(sq => {
+    const nicknames = sq.squad_nicknames.join('、');
+    return `
+      <div class="squad-block">
+        <h3>小队: ${escapeHtml(nicknames)} <span class="muted">(${sq.squad.length} 人 · ${sq.total} 局 · ${sq.wins} 胜 ${sq.losses} 负)</span></h3>
+        <ul class="attempt-list">
+          ${sq.attempts.map(a => `
+            <li class="attempt-row">
+              <span class="attempt-badge ${a.result}">${a.result === 'won' ? '胜' : '负'}</span>
+              <span class="chapter">${escapeHtml(a.chapter_name)} · ${escapeHtml(a.clock_name)}</span>
+              <span class="muted">${a.turn_count} 回合 · ${a.duration_seconds}s</span>
+              <span class="time">${formatTime(a.ended_at)}</span>
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `;
+  }).join('');
+}
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+const _historyBack = document.getElementById('history-back');
+if (_historyBack) _historyBack.onclick = () => { showView('lobby'); renderLobby(); };
+
+// 终局时显示"已记录"提示 (仅登录玩家)
+function maybeShowEndSaved() {
+  const el = document.getElementById('end-saved');
+  if (!el) return;
+  // 有 squad 字段就显示 (有登录玩家时 server 才写 squad)
+  const hasSquad = state.public?.players?.some(p => p.userId);
+  if (state.account.logged_in && hasSquad) {
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// ---------- 账号面板 (登录 / 注册 / 状态) ----------
+
+function renderAuthPanel() {
+  const panel = document.getElementById('auth-panel');
+  if (!panel) return;
+  if (state.account.logged_in) {
+    panel.innerHTML = `
+      <h3>已登录</h3>
+      <p class="auth-current">
+        <span class="auth-name">${escapeHtml(state.account.display_name || '')}</span>
+        <span class="muted small">${escapeHtml(state.account.userId || '')}</span>
+      </p>
+      <div class="actions">
+        <button id="auth-logout-btn" class="ghost" type="button">登 出</button>
+      </div>
+    `;
+    const btn = document.getElementById('auth-logout-btn');
+    if (btn) btn.onclick = () => {
+      if (confirm('确定登出？登出后"我的战绩"将无法查看（直到重新登录）。')) {
+        logoutAccount();
+      }
+    };
+  } else {
+    const isLogin = state.authMode === 'login';
+    panel.innerHTML = `
+      <h3>${isLogin ? '登 录' : '注 册'}</h3>
+      <div class="auth-tabs">
+        <button class="auth-tab ${isLogin ? 'active' : ''}" data-mode="login" type="button">登录</button>
+        <button class="auth-tab ${!isLogin ? 'active' : ''}" data-mode="register" type="button">注册</button>
+      </div>
+      <p class="muted small">${isLogin ? '用暗号登入, 朋友之间用同一个暗号就是同一个人' : '给自己起个暗号, 记住就能跨设备登入'}</p>
+      <input id="auth-passphrase" type="password" placeholder="暗号 (≥6 字符)" maxlength="64" autocomplete="off" />
+      ${!isLogin ? '<input id="auth-display-name" type="text" placeholder="显示名 (别人看到的名字)" maxlength="20" />' : ''}
+      <div class="actions">
+        <button id="auth-submit-btn" class="primary" type="button">${isLogin ? '登 录' : '注 册'}</button>
+      </div>
+    `;
+    panel.querySelectorAll('.auth-tab').forEach(t => {
+      t.onclick = () => {
+        state.authMode = t.dataset.mode;
+        renderAuthPanel();
+        // 重新聚焦
+        const f = document.getElementById('auth-passphrase');
+        if (f) f.focus();
+      };
+    });
+    const submit = document.getElementById('auth-submit-btn');
+    if (submit) submit.onclick = async () => {
+      const pp = document.getElementById('auth-passphrase').value;
+      if (!pp || pp.length < 6) return toast('暗号至少 6 个字符', '', 'error');
+      if (state.authMode === 'register') {
+        const dn = document.getElementById('auth-display-name')?.value?.trim();
+        if (!dn) return toast('请输入显示名', '', 'error');
+        const r = await registerPassphrase(pp, dn);
+        if (r?.error) return toast('注册失败', r.error, 'error');
+        toast('注册成功', `欢迎, ${r.display_name}`, 'success');
+        renderLobby();
+      } else {
+        const r = await loginPassphrase(pp);
+        if (r?.error) return toast('登录失败', r.error, 'error');
+        toast('已登录', r.display_name, 'success');
+        renderLobby();
+      }
+    };
+    // Enter 键提交
+    panel.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit.click(); });
+    });
+  }
+}
