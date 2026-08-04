@@ -3,7 +3,22 @@
 // 视觉：钟面 + 6 段 + Solar/Lunar 牌
 // 流程：大厅 → 等待 → 规则 → 准备 → 游戏 → 终局（翻牌）
 
-const socket = io({ reconnection: true, reconnectionAttempts: Infinity });
+// Socket.IO 连接 URL (前后端分离部署用):
+//   1. <body data-server-url="https://xxx">  (CF Pages + 远端后端场景)
+//   2. window.SERVER_URL = '...'              (运行时动态注入)
+//   3. 当前 host 是 localhost/127.0.0.1       (本地开发 → 走 3001)
+//   4. 空字符串 = 同源                        (前后端同一域名, 如全 Render 部署)
+const SERVER_URL = (() => {
+  const fromBody = document.body && document.body.dataset && document.body.dataset.serverUrl;
+  if (fromBody) return fromBody.replace(/\/+$/, '');  // 去尾部斜杠
+  if (typeof window.SERVER_URL === 'string' && window.SERVER_URL) {
+    return window.SERVER_URL.replace(/\/+$/, '');
+  }
+  const h = location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:3001';
+  return '';  // 同源
+})();
+const socket = io(SERVER_URL || '/', { reconnection: true, reconnectionAttempts: Infinity });
 
 // ---------- 常量 ----------
 

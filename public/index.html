@@ -10,6 +10,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css?v=8" />
 </head>
+<!--
+  部署配置:
+  - 前后端同源部署 (全 Render / 全 Vercel / 单域名): 留空, 客户端走 window.location.origin
+  - 前后端分离 (CF Pages 前端 + Render 后端): 填 Render URL, 例如:
+    <body data-server-url="https://taketime-web-xxxx.onrender.com">
+  - 本地开发: 不填, 自动连 localhost:3001
+-->
 <body>
   <div id="toast-container" aria-live="polite"></div>
   <div id="rule-tooltip" class="rule-tooltip hidden" aria-hidden="true"></div>
