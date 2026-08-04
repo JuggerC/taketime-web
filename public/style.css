@@ -887,6 +887,17 @@ input[type="checkbox"] {
   background: #1a2050;
   border: 1px solid var(--gold);
 }
+/* game view action-panel 里的手牌缩到能横排 3-6 张 */
+.action-panel .card-img { width: 56px; height: 78px; border-radius: 4px; }
+
+/* 候席 / 议席 / 规则页: 手牌 panel 不撑满整个视口, 居中显示 */
+#ready-view .panel,
+#waiting-view .panel,
+#rules-view .panel {
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+}
 
 /* 手牌 */
 .hand {

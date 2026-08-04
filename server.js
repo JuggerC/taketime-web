@@ -1714,6 +1714,7 @@ io.on('connection', (socket) => {
   socket.emit('player_colors', PLAYER_COLORS);
 
   socket.on('create_room', ({ nickname, chapter_id, clock_id, max_players, color }, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     if (!nickname || !nickname.trim()) return ack({ error: '请输入昵称' });
     const room = createRoom(chapter_id || DEFAULT_CHAPTER, clock_id, max_players);
     const takenColors = new Set();
@@ -1729,6 +1730,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_room', ({ room_id, nickname, color }, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     if (!nickname || !nickname.trim()) return ack({ error: '请输入昵称' });
     const room = rooms.get(room_id);
     if (!room) return ack({ error: '房间不存在' });
@@ -1747,6 +1749,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('rejoin_room', ({ room_id, nickname }, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const room = rooms.get(room_id);
     if (!room) return ack({ error: '房间不存在' });
     const player = room.players.find(p => p.nickname === nickname);
@@ -1763,6 +1766,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('fill_with_bots', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (playerIdx !== 0) return ack({ error: '只有房主能加 bot' });
@@ -1794,6 +1798,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start_game', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (room.players.length < 2) return ack({ error: `至少 2 人，当前 ${room.players.length}` });
@@ -1807,6 +1812,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('i_am_ready', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (room.state !== 'rules_intro') return ack({ error: '现在不能准备' });
@@ -1825,6 +1831,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('declare_first', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (room.state !== 'ready') return ack({ error: '现在不能抢答（请先在规则页都点"准备好"）' });
@@ -1839,6 +1846,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('play_card', (action, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (room.state !== 'playing') return ack({ error: '游戏未在进行' });
@@ -1909,6 +1917,7 @@ io.on('connection', (socket) => {
 
   // 主动退出房间 (区别于断线: 断线 slot 保留, 可重连; 主动退出 slot 删除)
   socket.on('leave_room', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ ok: true });
     if (playerIdx < 0 || playerIdx >= room.players.length) return ack({ ok: true });
@@ -1985,6 +1994,7 @@ io.on('connection', (socket) => {
 
   // 房主可发: 终局后重新开始 (同 chapter/clock, 重新发牌)
   socket.on('restart_game', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (room.host_idx !== playerIdx) return ack({ error: '只有房主可以重新开始' });
@@ -1998,6 +2008,7 @@ io.on('connection', (socket) => {
 
   // 房主可发: 终局后切到同 chapter 的下一关 (回到第 1 钟时循环)
   socket.on('next_clock', (_, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
     const { room, playerIdx } = findPlayerInRoom(socket.id);
     if (!room) return ack({ error: '未在房间' });
     if (room.host_idx !== playerIdx) return ack({ error: '只有房主可以切下一关' });

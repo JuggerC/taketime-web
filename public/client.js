@@ -664,7 +664,6 @@ function renderBoard() {
 
     const segDiv = el(`
       <div class="segment ${hasRule ? 'has-rule' : ''} ${isForbidden ? 'is-forbidden' : ''}" data-seg="${i+1}" style="left:${pos.left}; top:${pos.top}">
-        ${hasRule ? '<span class="rule-bell" title="有特殊规则">!</span>' : ''}
         ${isForbidden ? '<span class="rule-lock" title="钟面禁放段（旋转后才能放）">🔒</span>' : ''}
         <div class="seg-numeral">${escapeHtml(segName)}</div>
         <div class="segment-cards"></div>
@@ -843,7 +842,6 @@ function renderEnd() {
     const isForbidden = endForbidden.has(i + 1);
     const segDiv = el(`
       <div class="segment is-revealed ${hasRule ? 'has-rule' : ''} ${isForbidden ? 'is-forbidden' : ''}" style="left:${pos.left}; top:${pos.top}">
-        ${hasRule ? '<span class="rule-bell" title="有特殊规则">!</span>' : ''}
         ${isForbidden ? '<span class="rule-lock" title="秒针指向段（不可放卡）">🔒</span>' : ''}
         <div class="seg-numeral">${escapeHtml(segName)}</div>
         <div class="segment-cards"></div>
