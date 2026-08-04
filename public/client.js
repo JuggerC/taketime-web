@@ -797,7 +797,6 @@ function renderEnd() {
   banner.innerHTML = won
     ? '<div class="end-effect end-effect-win"><div class="end-particles"></div></div><h2 class="end-h2">✨ 时序归位</h2><p>所有规则都满足。钟面成象，万物归位。</p>'
     : '<div class="end-effect end-effect-lose"><div class="end-shards"></div></div><h2 class="end-h2">⟁ 时序失序</h2><p>有规则未满足。讨论后再次启钟。</p>';
-  document.getElementById('end-title').textContent = won ? '胜利' : '失败';
 
   document.getElementById('end-clock-img').src = state.public.clock.image;
   // Ch08 终局: 视觉旋转对齐最后状态. CSS 已用 translate 居中, JS 必须保留.
@@ -884,15 +883,31 @@ function renderEnd() {
   const byPlayer = document.getElementById('end-by-player');
   byPlayer.innerHTML = '';
 
-  // 房主才显示 "重新开始" / "下一关"
+  // 终局按钮: 4 种场景
+  //   赢 + 房主: [下一关 →] [关卡选择]
+  //   输 + 房主: [🔄 重新开始] [关卡选择]
+  //   赢 + 非房主: [关卡选择]
+  //   输 + 非房主: [关卡选择]
   const myPlayer = state.public.players[state.playerIdx];
   const isHost = !!(myPlayer && myPlayer.is_host);
-  document.getElementById('end-restart').style.display = isHost ? '' : 'none';
-  document.getElementById('end-next').style.display = isHost ? '' : 'none';
-  // 赢了的局用 "下一关", 输了的局用 "再来一次" (按钮文案都显示, 用户自己选)
+  const restartBtn = document.getElementById('end-restart');
+  const nextBtn = document.getElementById('end-next');
+  const backBtn = document.getElementById('end-back-lobby');
   if (isHost) {
-    document.getElementById('end-next').textContent = won ? '下一关 →' : '换一关试试 →';
+    if (won) {
+      restartBtn.style.display = 'none';
+      nextBtn.style.display = '';
+      nextBtn.textContent = '下一关 →';
+    } else {
+      restartBtn.style.display = '';
+      nextBtn.style.display = 'none';
+      restartBtn.textContent = '🔄 重新开始';
+    }
+  } else {
+    restartBtn.style.display = 'none';
+    nextBtn.style.display = 'none';
   }
+  backBtn.textContent = '关卡选择';
 
   state.public.players.forEach((p, i) => {
     const myCards = state.public.history.filter(h => h.player === i);

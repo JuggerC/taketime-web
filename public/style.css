@@ -158,10 +158,6 @@ body::before {
   background: linear-gradient(180deg, rgba(31, 39, 80, 0.7), rgba(22, 27, 61, 0.7));
   border: 1px solid var(--border);
   border-radius: 12px;
-  /* 终局面板: 限制最大宽度 + 居中, 让 board 真正在视口正中 */
-  max-width: 920px;
-  margin-left: auto;
-  margin-right: auto;
   padding: 20px 24px;
   margin-bottom: 16px;
   box-shadow: var(--shadow);
@@ -509,7 +505,6 @@ input[type="checkbox"] {
   border-color: #f55;
   color: #fff;
 }
-.end-actions { gap: 12px; flex-wrap: wrap; }
 
 .game-main {
   display: grid;
@@ -987,6 +982,31 @@ input[type="checkbox"] {
 }
 
 /* 终局 */
+#end-view {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.end-top { padding: 16px 0 8px; }
+.end-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(280px, 1fr);
+  gap: 24px;
+  align-items: start;
+  padding: 8px 0 16px;
+}
+.end-board-wrap { display: flex; flex-direction: column; gap: 12px; }
+.end-info { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 80px); overflow-y: auto; }
+.end-bottom { padding: 8px 0 24px; }
+.end-actions { gap: 12px; flex-wrap: wrap; }
+@media (max-width: 1100px) {
+  .end-main { grid-template-columns: 1fr; }
+  .end-info { max-height: none; }
+}
+
 .end-banner {
   position: relative;
   padding: 28px 20px 24px;
