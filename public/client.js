@@ -499,10 +499,10 @@ function renderReady() {
   const btn = document.getElementById('ready-declare');
   if (state.public.first_player_idx !== null) {
     const first = state.public.players[state.public.first_player_idx];
-    btn.textContent = `⚡ ${first.nickname} 先出`;
+    btn.textContent = `${first.nickname} 先出`;
     btn.disabled = true;
   } else {
-    btn.textContent = '⚡ 我先出';
+    btn.textContent = '我先出';
     btn.disabled = false;
   }
 }
@@ -901,7 +901,7 @@ function renderEnd() {
     } else {
       restartBtn.style.display = '';
       nextBtn.style.display = 'none';
-      restartBtn.textContent = '🔄 重新开始';
+      restartBtn.textContent = '重新开始';
     }
   } else {
     restartBtn.style.display = 'none';
