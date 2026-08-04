@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Take Time · 时序迷局</title>
+  <link rel="icon" type="image/png" href="img/misc/TAKETIME_LOGO.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=8" />
+</head>
+<body>
+  <div id="toast-container" aria-live="polite"></div>
+  <div id="rule-tooltip" class="rule-tooltip hidden" aria-hidden="true"></div>
+
+  <!-- ============================== 大厅 ============================== -->
+  <section id="lobby-view" class="view hidden">
+    <header class="lobby-header">
+      <img src="img/misc/TAKETIME_LOGO.png" alt="Take Time" class="tt-logo" />
+      <h1>时序迷局 · 网页版</h1>
+      <p class="muted">2–4 人合作卡牌解谜。原作：Libellud</p>
+    </header>
+
+    <div class="lobby-main">
+      <div class="lobby-create panel">
+        <input id="lobby-nickname" type="text" placeholder="你的昵称" maxlength="20" />
+        <h3>章节</h3>
+        <div id="chapter-picker" class="picker"></div>
+        <h3>关卡</h3>
+        <div id="clock-picker" class="picker"></div>
+        <h3>玩家数</h3>
+        <div id="player-count-picker" class="picker">
+          <button type="button" class="picker-btn" data-count="2">2 人</button>
+          <button type="button" class="picker-btn" data-count="3">3 人</button>
+          <button type="button" class="picker-btn active" data-count="4">4 人</button>
+        </div>
+        <h3>选择你的颜色</h3>
+        <div id="lobby-color-picker" class="color-picker"></div>
+        <p class="muted small">房间内每人颜色不同，牌面边框会显示打牌人颜色。</p>
+        <button id="lobby-create-btn" class="primary" type="button">启 钟</button>
+      </div>
+
+      <div class="lobby-rooms panel">
+        <h2>进行中的迷局</h2>
+        <ul id="room-list" class="room-list">
+          <li class="muted lobby-empty-hint">还没有开放的迷局。开启新的迷局吧。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 等待 ============================== -->
+  <section id="waiting-view" class="view hidden">
+    <header class="lobby-header">
+      <h1>候 席</h1>
+      <p class="muted">房间 <code id="waiting-room-id">???</code></p>
+    </header>
+    <div class="panel">
+      <h2>同 局</h2>
+      <ul id="waiting-players" class="player-list"></ul>
+      <p id="waiting-host-hint" class="muted">你是司局。等同局人到齐后启程。</p>
+      <div class="actions">
+        <button id="waiting-fill-bots" class="ghost" type="button">🤖 用 Bot 补齐</button>
+        <button id="waiting-start" class="primary" type="button">启 程</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="waiting-leave" class="ghost" type="button">← 退 出</button>
+    </div>
+  </section>
+
+  <!-- ============================== 规则 ============================== -->
+  <section id="rules-view" class="view hidden">
+    <header class="lobby-header">
+      <h1 id="rules-title">本局规则</h1>
+      <p class="muted" id="rules-subtitle"></p>
+    </header>
+    <div class="rules-grid">
+      <div class="panel rules-text-panel">
+        <h2 id="rules-chapter-name">章节</h2>
+        <p id="rules-chapter-desc"></p>
+        <h3>通用规则</h3>
+        <ul id="rules-standard" class="rules-list"></ul>
+        <h3>本局特殊规则</h3>
+        <ul id="rules-clock-special" class="rules-list"></ul>
+      </div>
+      <div class="panel rulesheet-panel">
+        <h3>钟面图</h3>
+        <div class="rulesheet-wrap">
+          <img id="rules-rulesheet" alt="钟面图" />
+        </div>
+      </div>
+    </div>
+    <div class="actions center">
+      <button id="rules-ready" class="primary" type="button">✅ 我已就位</button>
+      <button id="rules-leave" class="ghost" type="button">← 退 出</button>
+    </div>
+  </section>
+
+  <!-- ============================== 准备 / 抢答 ============================== -->
+  <section id="ready-view" class="view hidden">
+    <header class="lobby-header">
+      <h1>议 席</h1>
+      <p class="muted">所有人都已就位。看自己的手牌，然后由一人抢先出牌。</p>
+    </header>
+    <div class="panel">
+      <h2>你的手牌</h2>
+      <div id="ready-hand" class="hand"></div>
+    </div>
+    <div class="actions center">
+      <button id="ready-declare" class="primary" type="button">⚡ 我先出</button>
+    </div>
+  </section>
+
+  <!-- ============================== 游戏 ============================== -->
+  <section id="game-view" class="view hidden">
+    <header class="game-header">
+      <div class="game-title">
+        <span id="game-chapter">章节</span>
+        <span class="dot">·</span>
+        <span id="game-clock">局</span>
+      </div>
+      <div class="game-stats">
+        <div class="stat"><span class="stat-label">回合</span><span id="game-turn" class="stat-val">—</span></div>
+        <div class="stat"><span class="stat-label">明牌</span><span id="game-faceup" class="stat-val">—</span></div>
+        <div class="stat"><span class="stat-label">手牌</span><span id="game-hand-size" class="stat-val">—</span></div>
+        <div class="stat" style="display:none"><span class="stat-label">备牌</span><span id="game-deck" class="stat-val">—</span></div>
+        <div class="stat" style="display:none"><span class="stat-label">旋转</span><span id="game-rotation" class="stat-val">—</span></div>
+        <div class="stat" style="display:none"><span class="stat-label">秒针</span><span id="game-second-hand" class="stat-val">—</span></div>
+      </div>
+    </header>
+
+    <div class="game-main">
+      <aside class="players-strip" id="players-strip"></aside>
+
+      <div class="board">
+        <div class="board-cloth"></div>
+        <img id="board-clock-img" class="board-clock-img" alt="钟面" />
+        <svg id="board-second-hand" class="board-second-hand" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style="display:none">
+          <line x1="50" y1="50" x2="50" y2="10" stroke="rgba(255, 80, 80, 0.85)" stroke-width="1.5" stroke-dasharray="2 2" />
+          <circle cx="50" cy="50" r="2.2" fill="rgba(255, 80, 80, 0.95)" />
+        </svg>
+        <div id="board-segments" class="board-segments"></div>
+      </div>
+
+      <div class="action-panel">
+        <h3>你的行动</h3>
+        <div class="action-hint" id="action-hint">从手牌选一张。</div>
+        <div class="hand" id="game-hand"></div>
+        <div class="actions">
+          <label class="checkbox" id="action-faceup-label">
+            <input type="checkbox" id="action-faceup" />
+            <span>明出此牌</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 终局 ============================== -->
+  <section id="end-view" class="view hidden">
+    <header class="lobby-header">
+      <h1 id="end-title">本局结束</h1>
+    </header>
+    <div class="panel">
+      <div id="end-banner" class="end-banner"></div>
+      <h2>最终盘面</h2>
+      <div class="board">
+        <div class="board-cloth"></div>
+        <img id="end-clock-img" class="board-clock-img" alt="钟面" />
+        <svg id="end-second-hand" class="board-second-hand" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" style="display:none">
+          <line x1="50" y1="50" x2="50" y2="10" stroke="rgba(255, 80, 80, 0.85)" stroke-width="1.5" stroke-dasharray="2 2" />
+          <circle cx="50" cy="50" r="2.2" fill="rgba(255, 80, 80, 0.95)" />
+        </svg>
+        <div id="end-segments" class="board-segments"></div>
+      </div>
+      <h2>规则核对</h2>
+      <ul id="end-detail" class="rules-list"></ul>
+      <h2>各人出牌</h2>
+      <ul id="end-by-player" class="end-by-player"></ul>
+    </div>
+    <div class="actions center">
+      <button id="end-back-lobby" class="primary" type="button">← 返回大厅</button>
+    </div>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="sounds.js?v=8"></script>
+  <script src="client.js?v=8"></script>
+</body>
+</html>

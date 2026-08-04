@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+server.log
+v4_server.log
+/tmp/
+
+# Developer notes (only for local handoff)
+HANDOFF.md
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Environment
+.env
+.env.local
+
+# Build artifacts (none currently, but for future)
+dist/
+build/

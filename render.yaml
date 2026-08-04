@@ -1,0 +1,36 @@
+# Render 部署配置 (https://render.com/docs/blueprint-spec)
+#
+# 部署方法:
+#   1. 推代码到 GitHub
+#   2. 在 Render 后台 "New" → "Blueprint" → 选这个 repo → 它会读这个文件自动创建服务
+#   或者 "New Web Service" → 手动配 (Build/Start command 同下)
+#
+# Free tier 限制:
+#   - 15 分钟无活动会休眠, 首访冷启动 10-30 秒
+#   - 750 小时/月运行时间
+#   - 100 GB 出口流量
+#
+# 朋友玩、小规模完全够用. 嫌冷启动慢可以升级到 Starter ($7/月, 永远在线).
+
+services:
+  - type: web
+    name: taketime-web
+    runtime: node
+    plan: free
+    region: oregon       # 美西, 国内访问延迟 ~200-350ms (套 Cloudflare 可改善)
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 24.3.0
+      - key: PORT
+        value: 10000        # Render 默认端口, server.js 已支持 process.env.PORT
+    # Socket.IO 需要这些超时设置
+    # (render.yaml 不直接支持 socket timeout, 需在 server.js 改)
+
+# 域名配置 (部署后手动加, 见 README)
+# - Custom domain: 在 Render 服务页面 "Settings" → "Custom Domains" 加你的域名
+# - Cloudflare DNS: 加 CNAME 记录指向 <service-name>.onrender.com
