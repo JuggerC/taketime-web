@@ -458,8 +458,8 @@ input[type="checkbox"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0 16px;
-  margin-bottom: 12px;
+  padding: 4px 0 6px;
+  margin-bottom: 4px;
   border-bottom: 1px solid var(--border);
 }
 .game-title {
@@ -493,9 +493,9 @@ input[type="checkbox"] {
   background: rgba(180, 30, 30, 0.18);
   border: 1px solid rgba(220, 60, 60, 0.45);
   color: #fbb;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
   font-family: inherit;
@@ -520,7 +520,7 @@ input[type="checkbox"] {
 .action-panel { min-width: 0; }
 @media (max-width: 1100px) {
   .game-main { grid-template-columns: 1fr; }
-  .board { width: min(560px, calc(100vh - 380px)); height: min(560px, calc(100vh - 380px)); }
+  .board { width: min(560px, calc(100vh - 320px)); height: min(560px, calc(100vh - 320px)); }
 }
 
 /* 玩家栏 */
@@ -578,12 +578,12 @@ input[type="checkbox"] {
 .dot-color.lunar { background: var(--lunar); }
 
 /* 圆形桌布 + 中心小钟 + 外圈卡牌 */
-/* 大小永远自适应视口高度: min(720px, 100vh - 220px) — 任何浏览器/缩放都不会撑出滚动 */
+/* 大小永远自适应视口高度: min(740px, 100vh - 160px) — 任何浏览器/缩放都不会撑出滚动 */
 .board {
   position: relative;
   flex: 0 0 auto;
-  width: min(720px, calc(100vh - 220px));
-  height: min(720px, calc(100vh - 220px));
+  width: min(740px, calc(100vh - 160px));
+  height: min(740px, calc(100vh - 160px));
   border-radius: 50%;
   background:
     radial-gradient(circle at 50% 50%, transparent 50%, rgba(0, 0, 0, 0.55) 100%),
