@@ -952,13 +952,10 @@ document.getElementById('end-next').onclick = () => endAction('next_clock');
 
 // ---------- 主动退出房间 (替代 location.reload, 让服务器清理 slot) ----------
 async function leaveRoom() {
-  // 终局/规则/等待/游戏页都能用, 简单粗暴: 通知服务器, 服务器处理后客户端 reload
+  // 终局/规则/等待页都能用, 简单粗暴: 通知服务器, 服务器处理后客户端 reload
   try { await emit('leave_room'); } catch (_) {}
   location.reload();
 }
-document.getElementById('game-leave').onclick = () => {
-  if (confirm('确定退出当前房间? (房主退出后会转让给下一位玩家)')) leaveRoom();
-};
 // 老版 location.reload 的 leave 按钮也升级
 const _waitingLeave = document.getElementById('waiting-leave');
 if (_waitingLeave) _waitingLeave.onclick = () => {
