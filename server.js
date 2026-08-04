@@ -1515,6 +1515,7 @@ function getPublicState(room) {
       ready: p.isBot ? true : !!p.ready,
       is_first: i === room.first_player_idx,
       is_bot: !!p.isBot,
+      is_host: i === room.host_idx,
     })),
     segments: revealAll ? room.segments : room.segments.map(s => sanitizeSegment(s, revealAll)),
     history: revealAll ? room.history : room.history.map(h => sanitizeHistoryEntry(h, revealAll)),
@@ -1643,6 +1644,7 @@ function createRoom(chapterId, clockId, maxPlayers) {
     forbidden_segments: Array.isArray(clock.forbidden_segments) ? clock.forbidden_segments.slice() : [],
     second_hand: null,    // Ch10 凝聚: 秒针位置 (startGame 时初始化)
     game_result: null,
+    host_idx: null,       // 房主 (创建者) 在 players 数组里的 idx, 留 null 玩家加入后设为 0
     created_at: Date.now(),
     started_at: null,
   };
@@ -1695,6 +1697,7 @@ io.on('connection', (socket) => {
     if (chosen.error) return ack({ error: chosen.error });
     room.players.push({ socketId: socket.id, nickname: nickname.trim(), hand: [], connected: true, color: chosen.color });
     socket.join(room.id);
+    if (room.host_idx == null) room.host_idx = 0;  // 第一个进房的玩家是房主
     console.log(`[room ${room.id}] created by ${nickname} (color=${chosen.color}, chapter=${room.chapter.id}, clock=${room.clock.id}, max=${room.max_players})`);
     ack({ room_id: room.id, player_idx: 0, color: chosen.color, chapter: room.chapter.id, clock: room.clock.id });
     broadcastRoom(room);
@@ -1878,6 +1881,117 @@ io.on('connection', (socket) => {
       broadcastRoom(room);
       broadcastRoomList();
     }
+  });
+
+  // 主动退出房间 (区别于断线: 断线 slot 保留, 可重连; 主动退出 slot 删除)
+  socket.on('leave_room', (_, ack) => {
+    const { room, playerIdx } = findPlayerInRoom(socket.id);
+    if (!room) return ack({ ok: true });
+    if (playerIdx < 0 || playerIdx >= room.players.length) return ack({ ok: true });
+    const p = room.players[playerIdx];
+    if (p.isBot) return ack({ error: 'Bot 不能主动退出' });
+    if (room.state === 'finished') {
+      // 终局: 退出只是离开, 不动游戏状态
+      socket.leave(room.id);
+      socket.emit('left_room', { reason: 'self_leave' });
+      return ack({ ok: true });
+    }
+    // 调整所有 idx 引用 (在 splice 之前)
+    const hostWasLeaving = (room.host_idx != null && room.host_idx === playerIdx);
+    const adjustIdx = (ref) => {
+      if (ref == null) return null;
+      if (ref === playerIdx) return null;       // 退出的就是它 → 重置
+      if (ref > playerIdx) return ref - 1;
+      return ref;
+    };
+    if (room.current_player_idx === playerIdx) {
+      // 当前玩家退出, 顺延到下一个 (剩余玩家中的下一个)
+      const newLen = room.players.length - 1;
+      if (newLen > 0) room.current_player_idx = playerIdx % newLen;
+      else room.current_player_idx = null;
+    } else {
+      room.current_player_idx = adjustIdx(room.current_player_idx);
+    }
+    room.first_player_idx = adjustIdx(room.first_player_idx);
+    if (room.host_idx != null) {
+      if (hostWasLeaving) room.host_idx = -1;  // 标记, splice 后重新分配
+      else if (room.host_idx > playerIdx) room.host_idx -= 1;
+    }
+    // 删除玩家
+    console.log(`[room ${room.id}] ${p.nickname} (P${playerIdx}) left the room`);
+    room.players.splice(playerIdx, 1);
+    // 房主退出后重新分配 (此时数组已就位)
+    if (hostWasLeaving) {
+      const nextHost = room.players.findIndex(pl => !pl.isBot);
+      room.host_idx = nextHost >= 0 ? nextHost : null;
+    }
+    // 游戏中: 没有任何非 bot 玩家时, 强制结束
+    if (room.state === 'playing' || room.state === 'rules_intro' || room.state === 'ready') {
+      const hasHuman = room.players.some(pl => !pl.isBot);
+      if (!hasHuman) {
+        if (room.state === 'playing') {
+          revealRoom(room);
+          room.state = 'finished';
+          const result = checkResolution(room);
+          room.game_result = { won: result.won, detail: result.detail, sums: result.sums };
+        } else {
+          // waiting 阶段没真人, 房间清空
+          rooms.delete(room.id);
+          socket.leave(room.id);
+          socket.emit('left_room', { reason: 'no_humans' });
+          broadcastRoomList();
+          return ack({ ok: true });
+        }
+      }
+    }
+    // 房间空: 删房间
+    if (room.players.length === 0) {
+      rooms.delete(room.id);
+      socket.leave(room.id);
+      socket.emit('left_room', { reason: 'room_empty' });
+      broadcastRoomList();
+      return ack({ ok: true });
+    }
+    socket.leave(room.id);
+    socket.emit('left_room', { reason: 'self_leave' });
+    broadcastRoom(room);
+    broadcastRoomList();
+    ack({ ok: true });
+  });
+
+  // 房主可发: 终局后重新开始 (同 chapter/clock, 重新发牌)
+  socket.on('restart_game', (_, ack) => {
+    const { room, playerIdx } = findPlayerInRoom(socket.id);
+    if (!room) return ack({ error: '未在房间' });
+    if (room.host_idx !== playerIdx) return ack({ error: '只有房主可以重新开始' });
+    if (room.state !== 'finished') return ack({ error: '游戏未结束, 不能重新开始' });
+    if (room.players.length < 2) return ack({ error: '人数不足, 不能重新开始' });
+    console.log(`[room ${room.id}] host restart_game (chapter=${room.chapter.id}, clock=${room.clock.id})`);
+    startGame(room);
+    ack({ ok: true });
+    broadcastRoom(room);
+  });
+
+  // 房主可发: 终局后切到同 chapter 的下一关 (回到第 1 钟时循环)
+  socket.on('next_clock', (_, ack) => {
+    const { room, playerIdx } = findPlayerInRoom(socket.id);
+    if (!room) return ack({ error: '未在房间' });
+    if (room.host_idx !== playerIdx) return ack({ error: '只有房主可以切下一关' });
+    if (room.state !== 'finished') return ack({ error: '游戏未结束, 不能切下一关' });
+    if (room.players.length < 2) return ack({ error: '人数不足, 不能切下一关' });
+    const clocks = room.chapter.clocks || [];
+    if (clocks.length === 0) return ack({ error: '本章没有可切的钟面' });
+    const curIdx = clocks.findIndex(c => c.id === room.clock.id);
+    const nextIdx = (curIdx + 1) % clocks.length;
+    room.clock = clocks[nextIdx];
+    // 重置钟面相关 state (forbidden / second_hand 跟钟面走, 重新初始化)
+    room.forbidden_segments = Array.isArray(room.clock.forbidden_segments)
+      ? room.clock.forbidden_segments.slice()
+      : [];
+    console.log(`[room ${room.id}] host next_clock -> ${room.clock.id} (chapter=${room.chapter.id})`);
+    startGame(room);
+    ack({ ok: true, next_clock: room.clock.id });
+    broadcastRoom(room);
   });
 });
 

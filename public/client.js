@@ -883,6 +883,17 @@ function renderEnd() {
 
   const byPlayer = document.getElementById('end-by-player');
   byPlayer.innerHTML = '';
+
+  // 房主才显示 "重新开始" / "下一关"
+  const myPlayer = state.public.players[state.playerIdx];
+  const isHost = !!(myPlayer && myPlayer.is_host);
+  document.getElementById('end-restart').style.display = isHost ? '' : 'none';
+  document.getElementById('end-next').style.display = isHost ? '' : 'none';
+  // 赢了的局用 "下一关", 输了的局用 "再来一次" (按钮文案都显示, 用户自己选)
+  if (isHost) {
+    document.getElementById('end-next').textContent = won ? '下一关 →' : '换一关试试 →';
+  }
+
   state.public.players.forEach((p, i) => {
     const myCards = state.public.history.filter(h => h.player === i);
     const c = colorHexOf(p.color);
@@ -914,12 +925,47 @@ function renderEnd() {
     byPlayer.appendChild(li);
   });
 }
-document.getElementById('end-back-lobby').onclick = () => location.reload();
+document.getElementById('end-back-lobby').onclick = () => leaveRoom();
+
+// ---------- 终局: 重新开始 / 下一关 (房主) ----------
+async function endAction(action) {
+  const r = await emit(action);
+  if (r?.error) return toast('失败', r.error, 'error');
+}
+document.getElementById('end-restart').onclick = () => endAction('restart_game');
+document.getElementById('end-next').onclick = () => endAction('next_clock');
+
+// ---------- 主动退出房间 (替代 location.reload, 让服务器清理 slot) ----------
+async function leaveRoom() {
+  // 终局/规则/等待/游戏页都能用, 简单粗暴: 通知服务器, 服务器处理后客户端 reload
+  try { await emit('leave_room'); } catch (_) {}
+  location.reload();
+}
+document.getElementById('game-leave').onclick = () => {
+  if (confirm('确定退出当前房间? (房主退出后会转让给下一位玩家)')) leaveRoom();
+};
+// 老版 location.reload 的 leave 按钮也升级
+const _waitingLeave = document.getElementById('waiting-leave');
+if (_waitingLeave) _waitingLeave.onclick = () => {
+  if (confirm('确定退出当前房间?')) leaveRoom();
+};
+const _rulesLeave = document.getElementById('rules-leave');
+if (_rulesLeave) _rulesLeave.onclick = () => {
+  if (confirm('确定退出当前房间?')) leaveRoom();
+};
 
 // ---------- Socket 事件 ----------
 
 socket.on('connect', () => console.log('connected', socket.id));
 socket.on('disconnect', () => toast('已断开', '正在尝试重连…', 'error'));
+socket.on('left_room', (data) => {
+  // 服务器主动通知: 房间已清理, 客户端刷新回 lobby
+  const reason = data?.reason || 'leave';
+  if (reason === 'room_empty' || reason === 'no_humans') {
+    toast('房间已关闭', '已无其他真人玩家, 房间清理', 'warn');
+  }
+  setTimeout(() => location.reload(), 600);
+});
 socket.on('room_list', (list) => {
   state.roomList = list || [];
   if (state.view === null || !document.getElementById('lobby-view').classList.contains('hidden')) {

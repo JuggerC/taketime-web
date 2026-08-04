@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <!--
   部署配置:
@@ -136,6 +136,9 @@
         <div class="stat" style="display:none"><span class="stat-label">旋转</span><span id="game-rotation" class="stat-val">—</span></div>
         <div class="stat" style="display:none"><span class="stat-label">秒针</span><span id="game-second-hand" class="stat-val">—</span></div>
       </div>
+      <div class="game-header-actions">
+        <button id="game-leave" class="leave-btn" type="button" title="退出房间">✕ 退出</button>
+      </div>
     </header>
 
     <div class="game-main">
@@ -187,13 +190,15 @@
       <h2>各人出牌</h2>
       <ul id="end-by-player" class="end-by-player"></ul>
     </div>
-    <div class="actions center">
-      <button id="end-back-lobby" class="primary" type="button">← 返回大厅</button>
+    <div class="actions center end-actions">
+      <button id="end-restart" class="primary" type="button" style="display:none">🔄 重新开始</button>
+      <button id="end-next" class="primary" type="button" style="display:none">下一关 →</button>
+      <button id="end-back-lobby" type="button">← 返回大厅</button>
     </div>
   </section>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="sounds.js?v=8"></script>
-  <script src="client.js?v=8"></script>
+  <script src="sounds.js?v=9"></script>
+  <script src="client.js?v=9"></script>
 </body>
 </html>
