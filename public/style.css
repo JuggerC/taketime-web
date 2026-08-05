@@ -235,6 +235,14 @@ body::before {
 .lobby-create input[type="password"]:disabled {
   opacity: 0.4;
 }
+/* 私人房区域三个元素之间留点空隙 (checkbox → 密码框 → 开启迷局) */
+.lobby-create #lobby-password {
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.lobby-create #lobby-create-btn {
+  margin-top: 14px;
+}
 
 /* ---------- 历史战绩 (Phase 3) ---------- */
 .history-stats {

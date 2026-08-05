@@ -237,8 +237,8 @@ function renderLobby() {
   const accountBtn = document.getElementById('lobby-account-btn');
   if (accountBtn) {
     accountBtn.textContent = state.account.logged_in
-      ? `账户 · ${state.account.display_name || '已登录'}`
-      : '账户';
+      ? `登录 · ${state.account.display_name || '已登录'}`
+      : '登录';
     accountBtn.onclick = () => {
       state.showAuthPanel = !state.showAuthPanel;
       const wrap = document.getElementById('auth-panel-wrap');
