@@ -578,10 +578,10 @@ function renderRules() {
   const myPlayer = state.public.players[state.playerIdx];
   const readyBtn = document.getElementById('rules-ready');
   if (myPlayer?.ready) {
-    readyBtn.textContent = '✅ 已就位';
+    readyBtn.textContent = `已就位 (${state.public.players.filter(p => p.ready).length}/${state.public.players.length})`;
     readyBtn.disabled = true;
   } else {
-    readyBtn.textContent = '✅ 我已就位';
+    readyBtn.textContent = '我已就位';
     readyBtn.disabled = false;
   }
 }
@@ -771,7 +771,7 @@ function renderBoard() {
         ${isForbidden ? '<span class="rule-lock" title="钟面禁放段（旋转后才能放）">🔒</span>' : ''}
         <div class="seg-numeral">${escapeHtml(segName)}</div>
         <div class="segment-cards"></div>
-        <div class="segment-meta">${sum != null ? `<b title="${valueLabel}">${sum}</b>` : ''}${segCards.length > 0 ? ` (${segCards.length})` : ''}</div>
+        ${(sum != null || segCards.length > 0) ? `<div class="segment-meta">${sum != null ? `<b title="${valueLabel}">${sum}</b>` : ''}${segCards.length > 0 ? ` (${segCards.length})` : ''}</div>` : ''}
       </div>
     `);
     if (isRevealed) segDiv.classList.add('is-revealed');
@@ -899,7 +899,7 @@ function renderEnd() {
   banner.className = 'end-banner ' + (won ? 'is-win' : 'is-lose');
   banner.innerHTML = won
     ? '<div class="end-effect end-effect-win"><div class="end-particles"></div></div><h2 class="end-h2">✨ 时序归位</h2><p>所有规则都满足。钟面成象，万物归位。</p>'
-    : '<div class="end-effect end-effect-lose"><div class="end-shards"></div></div><h2 class="end-h2">⟁ 时序失序</h2><p>有规则未满足。讨论后再次启钟。</p>';
+    : '<div class="end-effect end-effect-lose"><div class="end-shards"></div></div><h2 class="end-h2">⟁ 时序错乱</h2><p>有规则未满足。讨论后再次尝试。</p>';
   maybeShowEndSaved();
 
   document.getElementById('end-clock-img').src = state.public.clock.image;

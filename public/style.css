@@ -919,10 +919,9 @@ input[type="checkbox"] {
   0%, 100% { box-shadow: 0 0 4px rgba(245, 215, 110, 0.5); transform: translateX(-50%) scale(1); }
   50%      { box-shadow: 0 0 10px rgba(245, 215, 110, 0.9); transform: translateX(-50%) scale(1.15); }
 }
+/* .has-rule 视觉无差别化: hover 才显示规则 (符合用户偏好: "看着没规则也能打牌") */
 .segment.has-rule {
-  border-color: rgba(245, 215, 110, 0.6);
-  background: rgba(245, 215, 110, 0.06);
-  box-shadow: 0 0 12px rgba(245, 215, 110, 0.25);
+  /* 故意不写任何样式, 跟默认 .segment 长得一模一样 */
 }
 .segment.has-rule:hover {
   transform: translate(-50%, -50%) scale(1.06);  /* 缩小 hover scale 避免被 board 边缘裁切 */
