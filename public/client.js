@@ -1340,7 +1340,6 @@ function renderAuthPanel() {
   } else {
     const isLogin = state.authMode === 'login';
     panel.innerHTML = `
-      <h3>${isLogin ? '登 录' : '注 册'}</h3>
       <div class="auth-tabs">
         <button class="auth-tab ${isLogin ? 'active' : ''}" data-mode="login" type="button">登录</button>
         <button class="auth-tab ${!isLogin ? 'active' : ''}" data-mode="register" type="button">注册</button>
