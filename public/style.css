@@ -244,7 +244,9 @@ body::before {
   margin-top: 14px;
 }
 
-/* 密码框显隐开关 (眼睛图标) */
+/* 密码框显隐开关 (眼睛图标)
+   关键: 不使用 transform 居中, 用 top + margin-top 负值
+   避免被全局 button:hover 的 transform: translateY(-1px) 干扰导致 hover 时偏移 */
 .pw-wrap {
   position: relative;
   display: block;
@@ -255,20 +257,21 @@ body::before {
   margin-bottom: 0;
 }
 .pw-wrap > input {
-  padding-right: 40px;  /* 给眼睛按钮留位置 */
+  padding-right: 40px;
 }
 .pw-wrap.is-shown > input {
-  /* 显示状态下边框高亮一点点, 提示是明文 */
   border-color: rgba(245, 215, 110, 0.6);
 }
 .pw-toggle {
   position: absolute;
-  right: 2px;
+  right: 4px;
   top: 50%;
-  transform: translateY(-50%);
+  height: 26px;
+  width: 30px;
+  margin-top: -13px;  /* = -height/2, 不用 transform 居中 */
   background: transparent;
   border: none;
-  padding: 6px 8px;
+  padding: 0;
   cursor: pointer;
   color: var(--text-muted);
   display: flex;
@@ -280,10 +283,10 @@ body::before {
 .pw-toggle:hover {
   color: var(--gold-bright);
   background: rgba(212, 175, 55, 0.1);
-  transform: translateY(-50%);
+  /* 不写 transform, 让全局 button:hover 的 -1px 不再影响 */
 }
 .pw-toggle:active {
-  transform: translateY(-50%) scale(0.95);
+  background: rgba(212, 175, 55, 0.2);
 }
 .pw-toggle .eye-hide { display: none; }
 .pw-wrap.is-shown .pw-toggle .eye-show { display: none; }
@@ -292,6 +295,11 @@ body::before {
 .pw-toggle:focus-visible {
   outline: 1px solid var(--gold);
   outline-offset: 1px;
+}
+
+/* 注册面板的"用户名"输入框 (没有眼睛按钮, 走默认 input 样式) */
+.auth-display-name {
+  margin-bottom: 8px;
 }
 
 /* ---------- 历史战绩 (Phase 3) ---------- */
