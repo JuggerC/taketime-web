@@ -18,7 +18,7 @@
 ├── render.yaml            # Render 部署配置 (一键 Blueprint)
 ├── .gitignore             # 排除 node_modules/HANDOFF/data/
 ├── README.md              # 本文件
-└── test_*.js              # 12 个 e2e 测试
+└── test_*.js              # 13 个 e2e 测试
 ```
 
 无内置数据库. 房间状态在内存 (`Map`, 重启 = 房间全丢); **账号 / token / 小队历史走 Turso (libSQL)**, 详见下面 § 6.
@@ -128,17 +128,18 @@ git push -u origin main
 
 ## 6. 后续要不要做的
 
-- [ ] 加数据库持久化 (房间/战绩), 不重启丢数据
-- [ ] 加 rejoin token, 刷新页面不丢游戏
 - [ ] 加 monitor (Sentry / log tail)
 - [ ] CI 跑 test_*.js 自动验证
 - [ ] 多实例 + sticky session (50+ 人玩再考虑)
 - [ ] 套 UptimeRobot 防冷启动
 - [ ] Ch11/Ch12 章节
 
+> 账号/历史持久化 (Turso) 已完成, 详见 § 7.
+> rejoin_room (按 userId / 昵称优先匹配) 已实现, 刷新页面基本能续上.
+
 ---
 
-## 6. Turso 持久化 (账号 + 小队历史)
+## 7. Turso 持久化 (账号 + 小队历史)
 
 Render free tier 文件系统是 **ephemeral 的**: 每次 deploy / instance 重启 = 磁盘清空, 账号和历史全丢.
 
