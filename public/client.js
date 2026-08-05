@@ -257,11 +257,30 @@ function renderLobby() {
       }
     };
   }
-  // Auth 面板展开状态
+  // Auth 模态 (背景半透明 + 中央卡片)
   const authWrap = document.getElementById('auth-panel-wrap');
   if (authWrap) {
     authWrap.style.display = state.showAuthPanel ? '' : 'none';
-    if (state.showAuthPanel) renderAuthPanel();
+    if (state.showAuthPanel) {
+      renderAuthPanel();
+      // 点背景关闭 + Esc 关闭 (一次绑定, 后续走 state 切换)
+      if (!authWrap._wired) {
+        authWrap._wired = true;
+        authWrap.addEventListener('click', (e) => {
+          // 只有点背景 (class="modal-backdrop") 才关
+          if (e.target.classList.contains('modal-backdrop')) {
+            state.showAuthPanel = false;
+            authWrap.style.display = 'none';
+          }
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && state.showAuthPanel) {
+            state.showAuthPanel = false;
+            authWrap.style.display = 'none';
+          }
+        });
+      }
+    }
   }
 
   const picker = document.getElementById('chapter-picker');
@@ -1340,8 +1359,11 @@ function maybeShowEndSaved() {
 function renderAuthPanel() {
   const panel = document.getElementById('auth-panel');
   if (!panel) return;
+  // 关闭按钮 (X) 放在 panel 顶部右上角
+  const closeBtn = `<button type="button" class="modal-close" aria-label="关闭" title="关闭">×</button>`;
   if (state.account.logged_in) {
     panel.innerHTML = `
+      ${closeBtn}
       <h3>已登录</h3>
       <p class="auth-current">
         <span class="auth-name">${escapeHtml(state.account.display_name || '')}</span>
@@ -1357,9 +1379,12 @@ function renderAuthPanel() {
         logoutAccount();
       }
     };
+    const x = panel.querySelector('.modal-close');
+    if (x) x.onclick = closeAuthModal;
   } else {
     const isLogin = state.authMode === 'login';
     panel.innerHTML = `
+      ${closeBtn}
       <div class="auth-tabs">
         <button class="auth-tab ${isLogin ? 'active' : ''}" data-mode="login" type="button">登录</button>
         <button class="auth-tab ${!isLogin ? 'active' : ''}" data-mode="register" type="button">注册</button>
@@ -1418,5 +1443,14 @@ function renderAuthPanel() {
     panel.querySelectorAll('input').forEach(inp => {
       inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit.click(); });
     });
+    const x = panel.querySelector('.modal-close');
+    if (x) x.onclick = closeAuthModal;
   }
+}
+
+// 关闭 auth 模态 (Esc / 点背景 / 点 X 都会用)
+function closeAuthModal() {
+  state.showAuthPanel = false;
+  const authWrap = document.getElementById('auth-panel-wrap');
+  if (authWrap) authWrap.style.display = 'none';
 }

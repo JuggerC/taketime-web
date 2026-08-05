@@ -274,11 +274,16 @@ body::before {
   padding: 0;
   cursor: pointer;
   color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;  /* 网格居中, SVG 不会有 baseline 偏移 */
   border-radius: 4px;
   transition: color 0.15s, background 0.15s;
+  line-height: 0;  /* 防止 button 文字基线影响 SVG 位置 */
+}
+.pw-toggle svg {
+  display: block;  /* SVG 不再有 baseline gap */
+  width: 16px;
+  height: 16px;
 }
 .pw-toggle:hover {
   color: var(--gold-bright);
@@ -300,6 +305,75 @@ body::before {
 /* 注册面板的"用户名"输入框 (没有眼睛按钮, 走默认 input 样式) */
 .auth-display-name {
   margin-bottom: 8px;
+}
+
+/* ---------- 模态弹窗 (登录/注册) ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: modal-fade-in 0.2s ease-out;
+}
+.modal-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(31, 39, 80, 0.96), rgba(22, 27, 61, 0.96));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 32px 24px;
+  min-width: 340px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(212, 175, 55, 0.15);
+  animation: modal-pop-in 0.2s ease-out;
+}
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+.modal-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  /* 不用 transform, 避免被全局 button:hover 的 -1px 干扰 */
+}
+.modal-card .auth-tabs {
+  margin-bottom: 16px;
+}
+.modal-card .actions {
+  justify-content: flex-end;  /* 登录键靠右 */
+  margin-top: 16px;
 }
 
 /* ---------- 历史战绩 (Phase 3) ---------- */
