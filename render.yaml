@@ -28,6 +28,15 @@ services:
         value: 24.3.0
       - key: PORT
         value: 10000        # Render 默认端口, server.js 已支持 process.env.PORT
+      # Turso (libSQL) 持久化: 账号 + 小队历史 (替代之前本地 JSON 文件, Render free tier 文件系统会重置)
+      # 在 Turso 创 DB 后填这两个 (https://turso.tech):
+      #   1. turso db create taketime
+      #   2. turso db show taketime --url   → 填到 TURSO_DATABASE_URL
+      #   3. turso db tokens create taketime → 填到 TURSO_AUTH_TOKEN
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
     # Socket.IO 需要这些超时设置
     # (render.yaml 不直接支持 socket timeout, 需在 server.js 改)
 

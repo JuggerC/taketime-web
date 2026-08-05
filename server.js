@@ -30,13 +30,9 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
+const db = require('./db');  // libSQL/Turso 持久化
 
 const PORT = process.env.PORT || 3001;  // v4 uses 3001 to avoid v3's :3000
-const DATA_DIR = path.join(__dirname, 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
-const ATTEMPTS_FILE = path.join(DATA_DIR, 'attempts.json');
 
 const app = express();
 const server = http.createServer(app);
@@ -1324,15 +1320,15 @@ function checkGameEnd(room) {
     room.state = 'finished';
     const result = checkResolution(room);
     room.game_result = { won: result.won, detail: result.detail, sums: result.sums };
-    // Phase 3: 写入小队尝试记录
-    recordAttempt(room);
+    // Phase 3: 写入小队尝试记录 (async fire-and-forget; 不阻塞游戏结算)
+    recordAttempt(room).catch(err => console.error('[history] recordAttempt error:', err));
   }
 }
 
 // Phase 3: 小队尝试记录
-// 记录每次真实游戏结束 (出完所有手牌) → attempts.json
+// 记录每次真实游戏结束 (出完所有手牌) → libSQL/Turso
 // "all humans left → 强制结束" 走 leave_room 里的 checkGameEnd 但带 reason, 那里不调用 recordAttempt
-function recordAttempt(room) {
+async function recordAttempt(room) {
   try {
     // 只记至少有一个真人登录的尝试 (匿名玩家无 userId 不参与归集, 但允许匿名)
     // squad 只记登录玩家的 userId (排序后作为 canonical key)
@@ -1358,8 +1354,7 @@ function recordAttempt(room) {
       duration_seconds: Math.floor(((Date.now() - (room.started_at || Date.now())) / 1000)),
       player_count: room.players.length,
     };
-    attempts.attempts.push(attempt);
-    saveAttempts();
+    await db.insertAttempt(attempt);
     console.log(`[history] recorded attempt ${attempt.id} (${attempt.result}, squad=${squad.length} players)`);
   } catch (err) {
     console.error('[history] recordAttempt failed:', err.message);
@@ -1752,9 +1747,11 @@ function pickColor(requested, takenColors) {
 // ---------------------------------------------------------------------------
 // Account system: passphrase-based register/login (no username, no email).
 //
-// Storage:
-//   data/users.json   { users: [{ userId, passphrase_hash, salt, display_name, created_at }] }
-//   data/tokens.json  { tokens: [{ token, userId, created_at }] }
+// Storage: libSQL/Turso (db.js)
+//   users:    (userId PK, passphrase_hash, salt, display_name, created_at)
+//   tokens:   (token PK, userId, created_at)
+//   attempts: (id PK, started_at, ended_at, chapter_*, clock_*, squad JSON,
+//              squad_nicknames JSON, result, turn_count, duration_seconds, player_count)
 //
 // Flow:
 //   1. Client opens socket with `auth: { token }` if it has one from localStorage.
@@ -1763,35 +1760,6 @@ function pickColor(requested, takenColors) {
 //   3. Player objects gain `userId: string | null`. null for anonymous play.
 //   4. Anonymous still works — no token means no userId, no displayName.
 // ---------------------------------------------------------------------------
-
-function loadJsonFile(file, fallback) {
-  try {
-    if (!fs.existsSync(file)) return fallback;
-    const raw = fs.readFileSync(file, 'utf8');
-    if (!raw.trim()) return fallback;
-    return JSON.parse(raw);
-  } catch (err) {
-    // 损坏的 JSON: 备份一份, 从空开始 (数据不会丢, 只是历史从此刻起)
-    try {
-      if (fs.existsSync(file)) fs.renameSync(file, file + '.bak.' + Date.now());
-    } catch (_) {}
-    console.error(`[load] ${file} 损坏: ${err.message}, 从空数据启动`);
-    return fallback;
-  }
-}
-function saveJsonFile(file, obj) {
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
-  fs.renameSync(tmp, file);
-}
-
-let users = loadJsonFile(USERS_FILE, { users: [] });
-let tokens = loadJsonFile(TOKENS_FILE, { tokens: [] });
-let attempts = loadJsonFile(ATTEMPTS_FILE, { attempts: [] });
-
-function saveUsers() { saveJsonFile(USERS_FILE, users); }
-function saveTokens() { saveJsonFile(TOKENS_FILE, tokens); }
-function saveAttempts() { saveJsonFile(ATTEMPTS_FILE, attempts); }
 
 function hashPassphrase(passphrase, salt) {
   return crypto.createHash('sha256').update(salt + passphrase, 'utf8').digest('hex');
@@ -1806,48 +1774,41 @@ function genUserId() {
   return crypto.randomUUID();
 }
 
-function findUserByPassphrase(passphrase) {
-  // 注意: 没法快速反查, 只能 O(N) 遍历. 玩家量 < 1000 完全 OK.
-  for (const u of users.users) {
+async function findUserByPassphrase(passphrase) {
+  // 没法快速反查, 只能 O(N) 遍历所有 user. 玩家量 < 几千完全 OK.
+  const all = await db.getAllUsers();
+  for (const u of all) {
     if (hashPassphrase(passphrase, u.salt) === u.passphrase_hash) return u;
   }
   return null;
 }
-function findUserById(userId) {
-  return users.users.find(u => u.userId === userId) || null;
+
+async function issueToken(userId) {
+  const token = genToken();
+  await db.insertToken(token, userId, Date.now());
+  return token;
 }
-function findToken(tokenStr) {
-  return tokens.tokens.find(t => t.token === tokenStr) || null;
-}
-function issueToken(userId) {
-  const t = { token: genToken(), userId, created_at: Date.now() };
-  tokens.tokens.push(t);
-  saveTokens();
-  return t.token;
-}
-function revokeToken(tokenStr) {
-  const i = tokens.tokens.findIndex(t => t.token === tokenStr);
-  if (i >= 0) {
-    tokens.tokens.splice(i, 1);
-    saveTokens();
-    return true;
-  }
-  return false;
+async function revokeToken(tokenStr) {
+  await db.deleteToken(tokenStr);
 }
 
 // io.use middleware: 用 token 找 user, 挂到 socket.data.
 // 匿名也放行 (无 token / token 失效), 只是没有 userId.
-io.use((socket, next) => {
-  const tokenStr = socket.handshake.auth?.token;
-  if (!tokenStr || typeof tokenStr !== 'string') return next();
-  const t = findToken(tokenStr);
-  if (!t) return next();
-  const u = findUserById(t.userId);
-  if (!u) return next();
-  socket.data.userId = u.userId;
-  socket.data.displayName = u.display_name;
-  socket.data.token = tokenStr;
-  next();
+io.use(async (socket, next) => {
+  try {
+    const tokenStr = socket.handshake.auth?.token;
+    if (!tokenStr || typeof tokenStr !== 'string') return next();
+    const t = await db.findToken(tokenStr);
+    if (!t) return next();
+    const u = await db.findUserById(t.userId);
+    if (!u) return next();
+    socket.data.userId = u.userId;
+    socket.data.displayName = u.display_name;
+    socket.data.token = tokenStr;
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 io.on('connection', (socket) => {
@@ -1876,8 +1837,9 @@ io.on('connection', (socket) => {
 
   // ---------------- 账号系统 (passphrase) ----------------
 
-  socket.on('register_passphrase', ({ passphrase, display_name }, ack) => {
+  socket.on('register_passphrase', async ({ passphrase, display_name }, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
+    try {
     if (typeof passphrase !== 'string' || passphrase.length < 6) {
       return ack({ error: '暗号至少 6 个字符' });
     }
@@ -1889,18 +1851,16 @@ io.on('connection', (socket) => {
     }
     const dn = display_name.trim().slice(0, 20);
     // 不强制 display_name 唯一 (用户场景: 朋友起名随意)
+    const salt = genSalt();
     const user = {
       userId: genUserId(),
-      passphrase_hash: hashPassphrase(passphrase, genSalt()),
-      salt: undefined,  // 占位, 下面会重新生成
+      passphrase_hash: hashPassphrase(passphrase, salt),
+      salt,
       display_name: dn,
       created_at: Date.now(),
     };
-    user.salt = genSalt();
-    user.passphrase_hash = hashPassphrase(passphrase, user.salt);
-    users.users.push(user);
-    saveUsers();
-    const token = issueToken(user.userId);
+    await db.insertUser(user);
+    const token = await issueToken(user.userId);
     // 当前 socket 也直接登入 (避免需要刷一次)
     socket.data.userId = user.userId;
     socket.data.displayName = user.display_name;
@@ -1908,17 +1868,22 @@ io.on('connection', (socket) => {
     socket.emit('account_info', { logged_in: true, userId: user.userId, display_name: user.display_name });
     console.log(`[auth] registered userId=${user.userId} display="${user.display_name}"`);
     ack({ ok: true, userId: user.userId, display_name: user.display_name, token });
+    } catch (err) {
+      console.error('[auth] register error:', err);
+      ack({ error: '注册失败: ' + err.message });
+    }
   });
 
-  socket.on('login_passphrase', ({ passphrase }, ack) => {
+  socket.on('login_passphrase', async ({ passphrase }, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
+    try {
     if (typeof passphrase !== 'string' || passphrase.length < 6) {
       return ack({ error: '暗号至少 6 个字符' });
     }
-    const u = findUserByPassphrase(passphrase);
+    const u = await findUserByPassphrase(passphrase);
     if (!u) return ack({ error: '暗号不正确' });
     // 给这次连接发新 token
-    const token = issueToken(u.userId);
+    const token = await issueToken(u.userId);
     // 当前 socket 也直接登入
     socket.data.userId = u.userId;
     socket.data.displayName = u.display_name;
@@ -1926,6 +1891,10 @@ io.on('connection', (socket) => {
     socket.emit('account_info', { logged_in: true, userId: u.userId, display_name: u.display_name });
     console.log(`[auth] login userId=${u.userId} display="${u.display_name}"`);
     ack({ ok: true, userId: u.userId, display_name: u.display_name, token });
+    } catch (err) {
+      console.error('[auth] login error:', err);
+      ack({ error: '登录失败: ' + err.message });
+    }
   });
 
   socket.on('get_my_info', (_, ack) => {
@@ -1937,25 +1906,33 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('logout', (_, ack) => {
+  socket.on('logout', async (_, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
+    try {
     if (socket.data.token) {
-      revokeToken(socket.data.token);
+      await revokeToken(socket.data.token);
       delete socket.data.userId;
       delete socket.data.displayName;
       delete socket.data.token;
     }
     socket.emit('account_info', { logged_in: false });
     ack({ ok: true });
+    } catch (err) {
+      console.error('[auth] logout error:', err);
+      ack({ error: '登出失败' });
+    }
   });
 
   // Phase 3: 获取我的历史
-  socket.on('get_my_history', (_, ack) => {
+  socket.on('get_my_history', async (_, ack) => {
     ack = typeof ack === "function" ? ack : () => {};
+    try {
     if (!socket.data.userId) return ack({ error: '请先登录' });
     const myId = socket.data.userId;
+    // 从 DB 拿所有 attempts, 内存里过滤 + 聚合
+    const all = await db.getAllAttempts();
     // 我参与过的 attempt
-    const mine = attempts.attempts.filter(a => a.squad.includes(myId));
+    const mine = all.filter(a => a.squad.includes(myId));
     // 按时间倒序
     mine.sort((a, b) => b.ended_at - a.ended_at);
     // 统计
@@ -2014,6 +1991,10 @@ io.on('connection', (socket) => {
       },
       squads,
     });
+    } catch (err) {
+      console.error('[history] get_my_history error:', err);
+      ack({ error: '加载历史失败' });
+    }
   });
 
   socket.on('create_room', ({ nickname, chapter_id, clock_id, max_players, color, password }, ack) => {
@@ -2366,8 +2347,14 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Take Time v4 server listening on http://0.0.0.0:${PORT}`);
+// 启动顺序: 1) DB init (建表) → 2) HTTP server listen
+db.init().then(() => {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Take Time v4 server listening on http://0.0.0.0:${PORT}`);
+  });
+}).catch(err => {
+  console.error('[db] init failed, server not starting:', err);
+  process.exit(1);
 });
 
 // Graceful shutdown — Render / systemd 滚动重启时, 关 HTTP server,

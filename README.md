@@ -6,23 +6,22 @@
 
 ```
 .
-├── server.js              # Node + Express + Socket.IO 后端 (单文件)
+├── server.js              # Node + Express + Socket.IO 后端 (~2300 行)
+├── db.js                  # libSQL/Turso 持久化层 (账号/历史)
 ├── public/                # 静态前端 (HTML/CSS/JS/图片/钟面图)
 │   ├── index.html
 │   ├── style.css
 │   ├── client.js
 │   ├── sounds.js
 │   └── img/               # 自包含, 无外链
-├── package.json           # npm start 启动
+├── package.json           # npm start 启动 (含 @libsql/client)
 ├── render.yaml            # Render 部署配置 (一键 Blueprint)
-├── .gitignore             # 排除 node_modules/HANDOFF/logs
+├── .gitignore             # 排除 node_modules/HANDOFF/data/
 ├── README.md              # 本文件
-└── test_*.js              # 7 个 e2e 测试 (开发用, 不影响生产)
+└── test_*.js              # 12 个 e2e 测试
 ```
 
-无数据库. 状态全在内存 (`Map`), 重启 = 房间全丢. 对小圈子玩 OK.
-
----
+无内置数据库. 房间状态在内存 (`Map`, 重启 = 房间全丢); **账号 / token / 小队历史走 Turso (libSQL)**, 详见下面 § 6.
 
 ## 1. 推代码到 GitHub (5 分钟)
 
@@ -136,5 +135,53 @@ git push -u origin main
 - [ ] 多实例 + sticky session (50+ 人玩再考虑)
 - [ ] 套 UptimeRobot 防冷启动
 - [ ] Ch11/Ch12 章节
+
+---
+
+## 6. Turso 持久化 (账号 + 小队历史)
+
+Render free tier 文件系统是 **ephemeral 的**: 每次 deploy / instance 重启 = 磁盘清空, 账号和历史全丢.
+
+为了"朋友随时打开都有数据", 持久化用 [Turso](https://turso.tech) (libSQL, 免费档 9GB SQLite).
+
+### 6.1 本地开发 (无 Turso)
+
+不设环境变量时, server 自动用本地 SQLite 文件 `data/dev.db`. 无配置, 直接 `npm start` 就行.
+
+### 6.2 部署到 Render (用 Turso)
+
+```bash
+# 1. 装 Turso CLI
+brew install tursodatabase/tap/turso
+
+# 2. 登录 (浏览器开一下, 复制 token)
+turso auth login
+
+# 3. 创 DB
+turso db create taketime
+
+# 4. 拿 URL
+turso db show taketime --url
+# → libsql://taketime-<your-name>.turso.io
+
+# 5. 拿访问 token
+turso db tokens create taketime
+# → eyJ...  (一长串)
+```
+
+然后到 Render 控制台:
+
+1. 服务页 → **Environment** → **Add Environment Variable**
+2. 加两条:
+   - `TURSO_DATABASE_URL` = `libsql://taketime-xxx.turso.io`
+   - `TURSO_AUTH_TOKEN` = `eyJ...` 那一长串
+3. 保存 → Render 自动重新 deploy
+4. 之后每次 restart / redeploy, 账号和历史都还在 Turso
+
+### 6.3 验证
+
+打开 https://taketime-web.onrender.com, 注册个暗号, 关浏览器, 再打开 → 应该自动登入.
+
+---
 
 先上线再说. 出问题喊我.
