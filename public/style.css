@@ -244,6 +244,56 @@ body::before {
   margin-top: 14px;
 }
 
+/* 密码框显隐开关 (眼睛图标) */
+.pw-wrap {
+  position: relative;
+  display: block;
+  margin-bottom: 8px;
+}
+.pw-wrap.pw-wrap-inline {
+  flex: 1 1 120px;
+  margin-bottom: 0;
+}
+.pw-wrap > input {
+  padding-right: 40px;  /* 给眼睛按钮留位置 */
+}
+.pw-wrap.is-shown > input {
+  /* 显示状态下边框高亮一点点, 提示是明文 */
+  border-color: rgba(245, 215, 110, 0.6);
+}
+.pw-toggle {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.pw-toggle:hover {
+  color: var(--gold-bright);
+  background: rgba(212, 175, 55, 0.1);
+  transform: translateY(-50%);
+}
+.pw-toggle:active {
+  transform: translateY(-50%) scale(0.95);
+}
+.pw-toggle .eye-hide { display: none; }
+.pw-wrap.is-shown .pw-toggle .eye-show { display: none; }
+.pw-wrap.is-shown .pw-toggle .eye-hide { display: block; }
+.pw-toggle:focus { outline: none; }
+.pw-toggle:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
 /* ---------- 历史战绩 (Phase 3) ---------- */
 .history-stats {
   display: grid;

@@ -363,6 +363,16 @@ function renderLobby() {
       if (state.isPrivate) pwInput.focus();
     };
     pwInput.oninput = () => { state.roomPassword = pwInput.value; };
+    // 显隐密码 toggle
+    const pwToggle = document.querySelector('#lobby-password').parentElement.querySelector('.pw-toggle');
+    if (pwToggle) {
+      pwToggle.onclick = () => {
+        const wrap = pwToggle.closest('.pw-wrap');
+        const input = wrap.querySelector('input');
+        const shown = wrap.classList.toggle('is-shown');
+        input.type = shown ? 'text' : 'password';
+      };
+    }
   }
 
   // 手动加入房间 (输入房间号)
@@ -371,6 +381,16 @@ function renderLobby() {
   const joinBtn = document.getElementById('lobby-join-btn');
   if (joinIdInput) joinIdInput.value = state.joinRoomId;
   if (joinPwInput) joinPwInput.value = state.joinRoomPassword;
+  // 显隐密码 toggle (加入房间)
+  const joinPwToggle = document.querySelector('#lobby-join-password')?.parentElement?.querySelector('.pw-toggle');
+  if (joinPwToggle) {
+    joinPwToggle.onclick = () => {
+      const wrap = joinPwToggle.closest('.pw-wrap');
+      const input = wrap.querySelector('input');
+      const shown = wrap.classList.toggle('is-shown');
+      input.type = shown ? 'text' : 'password';
+    };
+  }
   if (joinBtn) {
     joinBtn.onclick = async () => {
       const rid = joinIdInput.value.trim().toUpperCase();
@@ -1345,7 +1365,13 @@ function renderAuthPanel() {
         <button class="auth-tab ${!isLogin ? 'active' : ''}" data-mode="register" type="button">注册</button>
       </div>
       <p class="muted small">${isLogin ? '用暗号登入, 朋友之间用同一个暗号就是同一个人' : '给自己起个暗号, 记住就能跨设备登入'}</p>
-      <input id="auth-passphrase" type="password" placeholder="暗号 (≥6 字符)" maxlength="64" autocomplete="off" />
+      <div class="pw-wrap">
+        <input id="auth-passphrase" type="password" placeholder="暗号 (≥6 字符)" maxlength="64" autocomplete="off" />
+        <button type="button" class="pw-toggle" aria-label="显示/隐藏暗号" tabindex="-1">
+          <svg class="eye-show" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-hide" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
+      </div>
       ${!isLogin ? '<input id="auth-display-name" type="text" placeholder="显示名 (别人看到的名字)" maxlength="20" />' : ''}
       <div class="actions">
         <button id="auth-submit-btn" class="primary" type="button">${isLogin ? '登 录' : '注 册'}</button>
@@ -1360,6 +1386,16 @@ function renderAuthPanel() {
         if (f) f.focus();
       };
     });
+    // 显隐暗号 toggle
+    const pwToggle = panel.querySelector('.pw-toggle');
+    if (pwToggle) {
+      pwToggle.onclick = () => {
+        const wrap = pwToggle.closest('.pw-wrap');
+        const input = wrap.querySelector('input');
+        const shown = wrap.classList.toggle('is-shown');
+        input.type = shown ? 'text' : 'password';
+      };
+    }
     const submit = document.getElementById('auth-submit-btn');
     if (submit) submit.onclick = async () => {
       const pp = document.getElementById('auth-passphrase').value;
