@@ -1,11 +1,11 @@
 {
   "name": "taketime-web",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "description": "Take Time (时之旅) — 4-player online card game web port, Ch1–10 implemented",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test_validator.js && node test_ch02_e2e.js && node test_ch345_e2e.js && node test_e2e.js && node test_play.js && node test_ch678_e2e.js && node test_ch910_e2e.js"
+    "test": "node test_validator.js && node test_ch02_e2e.js && node test_ch345_e2e.js && node test_e2e.js && node test_play.js && node test_ch678_e2e.js && node test_ch910_e2e.js && node test_host_e2e.js && node test_owner_view.js && node test_auth.js && node test_private_room.js && node test_history.js && node test_change_level.js"
   },
   "engines": {
     "node": ">=20"
