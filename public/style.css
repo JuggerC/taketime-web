@@ -333,13 +333,28 @@ body::before {
   font-size: 12px;
 }
 
-/* 终局选其他关卡 picker 面板 */
+/* 终局选其他关卡 picker 面板 (跟 end-main 同宽, 章节按钮排成 5 列) */
 .end-change-level-panel {
-  max-width: 700px;
+  max-width: 1100px;
   margin: 0 auto 16px;
+  padding: 20px 24px;
 }
-.end-change-level-panel .picker {
-  /* 跟 lobby-create 的 picker 一致, 用现有 .picker / .picker-btn 样式 */
+.end-change-level-panel #end-change-chapter-picker {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.end-change-level-panel #end-change-clock-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .end-change-level-panel #end-change-chapter-picker { grid-template-columns: repeat(3, 1fr); }
+  .end-change-level-panel #end-change-clock-picker { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .end-change-level-panel #end-change-chapter-picker { grid-template-columns: repeat(2, 1fr); }
 }
 
 .panel {

@@ -1014,7 +1014,7 @@ function renderEnd() {
       nextBtn.style.display = 'none';
       restartBtn.textContent = '重新开始';
     }
-    // "选其他关卡" 按钮: 房主专, 任意输赢都可点
+    // "关卡选择" 按钮: 房主专, 任意输赢都可点 (打开 picker)
     const changeBtn = document.getElementById('end-change-level');
     if (changeBtn) {
       changeBtn.style.display = '';
@@ -1037,7 +1037,7 @@ function renderEnd() {
     const panel = document.getElementById('end-change-level-panel');
     if (panel) panel.style.display = 'none';
   }
-  backBtn.textContent = '关卡选择';
+  backBtn.textContent = '回首页';
 
   state.public.players.forEach((p, i) => {
     const myCards = state.public.history.filter(h => h.player === i);
