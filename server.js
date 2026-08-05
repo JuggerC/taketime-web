@@ -2323,6 +2323,45 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
+  // 房主可发: 终局后切到任意 chapter/clock (不是只下一个, 朋友可以一起换关)
+  socket.on('change_level', ({ chapter_id, clock_id }, ack) => {
+    ack = typeof ack === "function" ? ack : () => {};
+    const { room, playerIdx } = findPlayerInRoom(socket.id);
+    if (!room) return ack({ error: '未在房间' });
+    if (room.host_idx !== playerIdx) return ack({ error: '只有房主可以换关' });
+    if (room.state !== 'finished') return ack({ error: '游戏未结束, 不能换关' });
+    if (room.players.length < 2) return ack({ error: '人数不足, 不能换关' });
+    const chapter = getChapter(chapter_id);
+    if (!chapter) return ack({ error: '章节不存在' });
+    const clock = chapter.clocks.find(c => c.id === clock_id) || chapter.clocks[0];
+    if (!clock) return ack({ error: '钟面不存在' });
+    // 更新 room (保留玩家 nicknames/colors/userIds, 重置游戏状态)
+    room.chapter = chapter;
+    room.clock = clock;
+    room.state = 'lobby';
+    room.game_result = null;
+    room.turn_number = 0;
+    room.players.forEach(p => {
+      p.hand = [];
+      p.ready = false;
+      p.connected = !!p.socketId;
+    });
+    room.segments = Array.from({ length: chapter.n_segments }, () => []);
+    room.history = [];
+    room.deck = [];
+    room.face_up_remaining = 0;
+    room.first_player_idx = null;
+    room.current_player_idx = null;
+    room.rotation = 0;
+    room.forbidden_segments = Array.isArray(clock.forbidden_segments) ? clock.forbidden_segments.slice() : [];
+    room.second_hand = null;
+    room.started_at = null;
+    console.log(`[room ${room.id}] host change_level -> ${chapter.id}/${clock.id} (squad stays)`);
+    ack({ ok: true });
+    broadcastRoom(room);
+    broadcastRoomList();
+  });
+
   // 房主可发: 终局后切到同 chapter 的下一关 (回到第 1 钟时循环)
   socket.on('next_clock', (_, ack) => {
     ack = typeof ack === "function" ? ack : () => {};

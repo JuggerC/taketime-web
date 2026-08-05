@@ -92,6 +92,9 @@ const state = {
   joinRoomPassword: '',
   showAuthPanel: false,
   authMode: 'login',  // 'login' | 'register'
+  // Phase 4: 终局选其他关卡 (房主专用)
+  changeChapterId: null,
+  changeClockId: null,
 };
 
 const VIEWS = ['lobby', 'waiting', 'rules', 'ready', 'game', 'end', 'history'];
@@ -437,6 +440,11 @@ function renderColorPicker(containerId, onPick, selectedId) {
 
 function renderWaiting() {
   document.getElementById('waiting-room-id').textContent = state.roomId || '???';
+  // 显示本局章节 + 关卡 (换关后会自动更新)
+  if (state.public && state.public.chapter && state.public.clock) {
+    const info = document.getElementById('waiting-chapter-info');
+    if (info) info.textContent = `${state.public.chapter.name} · ${state.public.clock.name}（${state.public.clock.subtitle}）`;
+  }
   const list = document.getElementById('waiting-players');
   if (!state.public) { list.innerHTML = '<li class="muted">加载中…</li>'; return; }
   list.innerHTML = '';
@@ -1006,9 +1014,28 @@ function renderEnd() {
       nextBtn.style.display = 'none';
       restartBtn.textContent = '重新开始';
     }
+    // "选其他关卡" 按钮: 房主专, 任意输赢都可点
+    const changeBtn = document.getElementById('end-change-level');
+    if (changeBtn) {
+      changeBtn.style.display = '';
+      changeBtn.onclick = () => {
+        const panel = document.getElementById('end-change-level-panel');
+        if (!panel) return;
+        panel.style.display = '';
+        // 初始化 picker state: 默认选当前 chapter/clock
+        state.changeChapterId = state.public.chapter.id;
+        state.changeClockId = state.public.clock.id;
+        renderChangeLevelPicker();
+      };
+    }
   } else {
     restartBtn.style.display = 'none';
     nextBtn.style.display = 'none';
+    const changeBtn = document.getElementById('end-change-level');
+    if (changeBtn) changeBtn.style.display = 'none';
+    // 非房主: 关闭 picker (防呆)
+    const panel = document.getElementById('end-change-level-panel');
+    if (panel) panel.style.display = 'none';
   }
   backBtn.textContent = '关卡选择';
 
@@ -1044,6 +1071,65 @@ function renderEnd() {
   });
 }
 document.getElementById('end-back-lobby').onclick = () => leaveRoom();
+
+// 终局选其他关卡 picker
+function renderChangeLevelPicker() {
+  const chPicker = document.getElementById('end-change-chapter-picker');
+  const ckPicker = document.getElementById('end-change-clock-picker');
+  if (!chPicker || !ckPicker) return;
+  // 章节
+  chPicker.innerHTML = '';
+  for (const ch of state.chapters) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'picker-btn';
+    if (ch.id === state.changeChapterId) btn.classList.add('active');
+    btn.innerHTML = `<strong>${escapeHtml(ch.name)}</strong><br><span class="muted">${escapeHtml(ch.subtitle)}</span>`;
+    btn.onclick = () => {
+      state.changeChapterId = ch.id;
+      state.changeClockId = ch.clocks[0]?.id || null;
+      renderChangeLevelPicker();
+    };
+    chPicker.appendChild(btn);
+  }
+  // 关卡
+  const ch = state.chapters.find(c => c.id === state.changeChapterId) || state.chapters[0];
+  if (!ch) return;
+  ckPicker.innerHTML = '';
+  for (const ck of ch.clocks) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'picker-btn';
+    if (ck.id === state.changeClockId) btn.classList.add('active');
+    btn.innerHTML = `<strong>${escapeHtml(ck.name)}</strong><br><span class="muted">${escapeHtml(ck.subtitle)}</span>`;
+    btn.onclick = () => {
+      state.changeClockId = ck.id;
+      renderChangeLevelPicker();
+    };
+    ckPicker.appendChild(btn);
+  }
+}
+const _changeCancel = document.getElementById('end-change-cancel');
+if (_changeCancel) _changeCancel.onclick = () => {
+  const panel = document.getElementById('end-change-level-panel');
+  if (panel) panel.style.display = 'none';
+};
+const _changeConfirm = document.getElementById('end-change-confirm');
+if (_changeConfirm) _changeConfirm.onclick = async () => {
+  if (!state.changeChapterId || !state.changeClockId) {
+    return toast('请先选章节和关卡', '', 'error');
+  }
+  const r = await emit('change_level', {
+    chapter_id: state.changeChapterId,
+    clock_id: state.changeClockId,
+  });
+  if (r?.error) return toast('换关失败', r.error, 'error');
+  // 成功: server 广播 state_update, 我们会切到 waiting view (state='lobby')
+  // 关闭 picker
+  const panel = document.getElementById('end-change-level-panel');
+  if (panel) panel.style.display = 'none';
+  toast('已换关', '所有人回到等待页, 房主点"启程"开始新关', 'success');
+};
 
 // ---------- 终局: 重新开始 / 下一关 (房主) ----------
 async function endAction(action) {

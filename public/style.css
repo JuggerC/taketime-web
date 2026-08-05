@@ -333,6 +333,15 @@ body::before {
   font-size: 12px;
 }
 
+/* 终局选其他关卡 picker 面板 */
+.end-change-level-panel {
+  max-width: 700px;
+  margin: 0 auto 16px;
+}
+.end-change-level-panel .picker {
+  /* 跟 lobby-create 的 picker 一致, 用现有 .picker / .picker-btn 样式 */
+}
+
 .panel {
   background: linear-gradient(180deg, rgba(31, 39, 80, 0.7), rgba(22, 27, 61, 0.7));
   border: 1px solid var(--border);

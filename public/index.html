@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=19" />
+  <link rel="stylesheet" href="style.css?v=20" />
 </head>
 <!--
   部署配置:
@@ -84,6 +84,8 @@
       <p class="muted">房间 <code id="waiting-room-id">???</code></p>
     </header>
     <div class="panel">
+      <h2>本局</h2>
+      <p class="muted" id="waiting-chapter-info">—</p>
       <h2>同 局</h2>
       <ul id="waiting-players" class="player-list"></ul>
       <p id="waiting-host-hint" class="muted">你是司局。等同局人到齐后启程。</p>
@@ -215,7 +217,22 @@
       <div class="actions center end-actions">
         <button id="end-restart" class="primary" type="button" style="display:none">重新开始</button>
         <button id="end-next" class="primary" type="button" style="display:none">下一关 →</button>
+        <button id="end-change-level" type="button" style="display:none">选其他关卡</button>
         <button id="end-back-lobby" type="button">关卡选择</button>
+      </div>
+    </div>
+
+    <!-- 终局选其他关卡 picker (房主专用, 默认隐藏) -->
+    <div id="end-change-level-panel" class="end-change-level-panel panel" style="display:none">
+      <h2>选其他关卡</h2>
+      <p class="muted small">选了之后所有玩家都会回到等待页, 房主点"启程"开始新关</p>
+      <h3>章节</h3>
+      <div id="end-change-chapter-picker" class="picker"></div>
+      <h3>关卡</h3>
+      <div id="end-change-clock-picker" class="picker"></div>
+      <div class="actions center">
+        <button id="end-change-cancel" class="ghost" type="button">取 消</button>
+        <button id="end-change-confirm" class="primary" type="button">确认换关</button>
       </div>
     </div>
   </section>
@@ -254,7 +271,7 @@
   </section>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="sounds.js?v=19"></script>
-  <script src="client.js?v=19"></script>
+  <script src="sounds.js?v=20"></script>
+  <script src="client.js?v=20"></script>
 </body>
 </html>
